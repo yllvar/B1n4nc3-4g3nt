@@ -1,134 +1,72 @@
 /**
- * Comprehensive Error Handling Module
- * This file contains all error handling functionality in one place to avoid import issues
+ * Comprehensive error handling module
+ * This file re-exports all error handling functionality
  */
 
-// Re-export everything from the individual modules
+// Re-export all error types
 export * from "./error-types"
+
+// Re-export error handler
 export * from "./error-handler"
+
+// Re-export retry mechanism
 export * from "./retry-mechanism"
 
 // Additional utility functions
 
 /**
- * Utility function for handling API errors
+ * Safely parse JSON with error handling
+ * @param json JSON string to parse
+ * @param fallback Fallback value if parsing fails
+ * @returns Parsed JSON or fallback value
  */
-export function handleApiError(
-  error: unknown,
-  context = "API",
-  options: {
-    showToast?: boolean
-    severity?: import("./error-types").ErrorSeverity
-    retryAction?: () => Promise<void>
-  } = {},
-): void {
-  const { showToast = true, severity = "medium", retryAction } = options
-
-  const message = error instanceof Error ? error.message : String(error)
-
-  import("./error-handler").then(({ errorHandler }) => {
-    errorHandler.handleError(message, {
-      context: { source: context },
-      showToast,
-      severity,
-      recoverable: !!retryAction,
-      retryAction,
-    })
-  })
-}
-
-/**
- * Utility function for handling WebSocket errors
- */
-export function handleWebSocketError(
-  error: unknown,
-  context = "WebSocket",
-  options: {
-    showToast?: boolean
-    severity?: import("./error-types").ErrorSeverity
-    reconnectAction?: () => Promise<void>
-  } = {},
-): void {
-  const { showToast = true, severity = "high", reconnectAction } = options
-
-  const message = error instanceof Error ? error.message : String(error)
-
-  import("./error-handler").then(({ errorHandler }) => {
-    errorHandler.handleError(message, {
-      context: { source: context },
-      showToast,
-      severity,
-      recoverable: !!reconnectAction,
-      retryAction: reconnectAction,
-      code: "WEBSOCKET_ERROR",
-    })
-  })
-}
-
-/**
- * Utility function for handling data processing errors
- */
-export function handleDataError(
-  error: unknown,
-  context = "Data Processing",
-  options: {
-    showToast?: boolean
-    severity?: import("./error-types").ErrorSeverity
-    data?: any
-  } = {},
-): void {
-  const { showToast = false, severity = "medium", data } = options
-
-  const message = error instanceof Error ? error.message : String(error)
-
-  import("./error-handler").then(({ errorHandler }) => {
-    errorHandler.handleError(message, {
-      context: { source: context, data },
-      showToast,
-      severity,
-      code: "DATA_PROCESSING_ERROR",
-    })
-  })
-}
-
-/**
- * Validate data against a schema or condition
- */
-export function validateData<T>(data: T, condition: (data: T) => boolean, errorMessage: string): T {
-  if (!condition(data)) {
-    const { ValidationError } = require("./error-types")
-    throw new ValidationError(errorMessage, {
-      context: { data },
-    })
+export function safeJsonParse<T>(json: string, fallback: T): T {
+  try {
+    return JSON.parse(json) as T
+  } catch (error) {
+    console.warn("Failed to parse JSON:", error)
+    return fallback
   }
-  return data
 }
 
 /**
- * Simple schema validation
+ * Create a safe version of a function that catches errors
+ * @param fn Function to make safe
+ * @param fallback Fallback value if function throws
+ * @returns Safe function that never throws
  */
-export function validateSchema<T extends Record<string, any>>(
-  data: T,
-  schema: Record<string, (value: any) => boolean>,
-): T {
-  const errors: string[] = []
-
-  for (const [key, validator] of Object.entries(schema)) {
-    if (key in data) {
-      if (!validator(data[key])) {
-        errors.push(`Invalid value for field "${key}"`)
-      }
-    } else {
-      errors.push(`Missing required field "${key}"`)
+export function makeSafe<T, Args extends any[]>(fn: (...args: Args) => T, fallback: T): (...args: Args) => T {
+  return (...args: Args): T => {
+    try {
+      return fn(...args)
+    } catch (error) {
+      console.error("Error in safe function:", error)
+      return fallback
     }
   }
+}
 
-  if (errors.length > 0) {
-    const { ValidationError } = require("./error-types")
-    throw new ValidationError(`Validation failed: ${errors.join(", ")}`, {
-      context: { data, errors },
-    })
+/**
+ * Safely access a property path in an object
+ * @param obj Object to access
+ * @param path Property path (e.g., 'user.profile.name')
+ * @param fallback Fallback value if path doesn't exist
+ * @returns Property value or fallback
+ */
+export function safeGet<T>(obj: any, path: string, fallback: T): T {
+  try {
+    const parts = path.split(".")
+    let current = obj
+
+    for (const part of parts) {
+      if (current === null || current === undefined) {
+        return fallback
+      }
+      current = current[part]
+    }
+
+    return current === undefined ? fallback : current
+  } catch (error) {
+    return fallback
   }
-
-  return data
 }

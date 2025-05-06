@@ -142,3 +142,10 @@ export class StrategyError extends AppError {
     })
   }
 }
+
+/**
+ * Re-export error types from the main error-types.ts file
+ * This file exists for backward compatibility
+ */
+
+export * from "../error-types"

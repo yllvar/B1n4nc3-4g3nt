@@ -51,17 +51,16 @@ export type SignalType = "BUY" | "SELL" | "STRONG_BUY" | "STRONG_SELL" | "NEUTRA
 
 // Strategy parameters
 export interface StrategyParameters {
-  symbol: string
-  interval: string
-  lookbackPeriod: number
-  rsiPeriod?: number
-  rsiOverbought?: number
-  rsiOversold?: number
-  macdFastPeriod?: number
-  macdSlowPeriod?: number
-  macdSignalPeriod?: number
-  bollingerPeriod?: number
-  bollingerStdDev?: number
+  shortEmaPeriod: number
+  longEmaPeriod: number
+  emaThreshold: number
+  vwapPeriod: number
+  vwapThreshold: number
+  takeProfitPercent: number
+  stopLossPercent: number
+  maxHoldingTimeMinutes: number
+  maxTradesPerHour: number
+  leverageMultiplier: number
   [key: string]: any
 }
 

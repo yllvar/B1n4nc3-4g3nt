@@ -11,52 +11,79 @@ The error handling system provides a centralized way to handle errors throughout
 - A circuit breaker pattern to prevent cascading failures
 - Utility functions for common error handling scenarios
 
-## Core Files
+## Core Components
 
-- `lib/error-types.ts`: Defines error classes and types
-- `lib/error-handler.ts`: Provides the error handling service
-- `lib/retry-mechanism.ts`: Implements retry logic and circuit breaker
-- `lib/error-handling.ts`: Main entry point that re-exports everything
+### Error Types
+
+The system defines several error types:
+
+- `AppError`: Base error class for all application errors
+- `ApiError`: For API-related errors
+- `NetworkError`: For network-related errors
+- `ValidationError`: For data validation errors
+- `WebSocketError`: For WebSocket-related errors
+- `AuthError`: For authentication-related errors
+- `ConfigError`: For configuration-related errors
+- `DataError`: For data-related errors
+- `StrategyError`: For trading strategy-related errors
+
+### Error Handler
+
+The `ErrorHandlingService` provides methods for:
+
+- Handling errors with appropriate severity levels
+- Storing and retrieving recent errors
+- Subscribing to error events
+- Implementing circuit breaker pattern
+- Retrying recoverable errors
+
+### Retry Mechanism
+
+The retry mechanism includes:
+
+- `retry`: A generic retry function for any async operation
+- `retryFetch`: A specialized retry function for fetch operations
+- `retryWithCircuitBreaker`: A retry function with circuit breaker pattern
 
 ## Usage Examples
 
 ### Basic Error Handling
 
 \`\`\`typescript
-import { errorHandler, AppError } from "@/lib/error-handling"
+import { errorHandler } from "@/lib/error-handler"
 
 try {
-  // Some code that might throw an error
+  // Some operation that might fail
 } catch (error) {
   errorHandler.handleError(error, {
-    context: { source: "MyComponent" },
-    severity: "medium",
+    severity: "high",
+    context: { operation: "example" },
     showToast: true,
   })
 }
 \`\`\`
 
-### Custom Error Classes
+### Using Custom Error Types
 
 \`\`\`typescript
-import { ApiError, NetworkError } from "@/lib/error-handling"
+import { ApiError } from "@/lib/error-types"
 
-// Throw a specific error type
-throw new ApiError("API request failed", {
-  code: "API_TIMEOUT",
-  severity: "high",
-  context: { endpoint: "/api/data" },
-})
+if (!response.ok) {
+  throw new ApiError(`API request failed with status ${response.status}`, {
+    code: "API_REQUEST_FAILED",
+    context: { url, method, status: response.status },
+  })
+}
 \`\`\`
 
-### Retry Mechanism
+### Retrying Operations
 
 \`\`\`typescript
-import { retry } from "@/lib/error-handling"
+import { retry } from "@/lib/retry-mechanism"
 
 const result = await retry(
   async () => {
-    // Some async operation that might fail
+    // Some operation that might fail transiently
     return await fetchData()
   },
   {
@@ -70,67 +97,56 @@ const result = await retry(
 )
 \`\`\`
 
-### Circuit Breaker
+### Using Utility Functions
 
 \`\`\`typescript
-import { retryWithCircuitBreaker } from "@/lib/error-handling"
+import { handleApiError, validateData } from "@/lib/error-handling"
 
-const result = await retryWithCircuitBreaker(
-  async () => {
-    // Some async operation that might fail
-    return await fetchData()
-  },
-  {
-    failureThreshold: 5,
-    resetTimeout: 60000,
-    maxRetries: 3,
-  }
-)
-\`\`\`
-
-### Utility Functions
-
-\`\`\`typescript
-import { handleApiError, handleWebSocketError, validateData } from "@/lib/error-handling"
-
-// Handle API errors
 try {
-  await fetchData()
+  // Validate data
+  validateData(userData, (data) => data.email && data.password, "Invalid user data")
+  
+  // API call that might fail
+  const response = await fetch("/api/users", {
+    method: "POST",
+    body: JSON.stringify(userData),
+  })
+  
+  if (!response.ok) {
+    throw new Error(`API request failed with status ${response.status}`)
+  }
 } catch (error) {
-  handleApiError(error, "DataService", {
+  handleApiError(error, "User API", {
     severity: "high",
     retryAction: async () => {
-      // Action to retry the operation
+      // Action to retry when network is restored
     },
   })
 }
-
-// Validate data
-const validatedData = validateData(
-  inputData,
-  (data) => data.id && data.name,
-  "Invalid data: missing required fields"
-)
 \`\`\`
 
 ## Best Practices
 
-1. **Use Specific Error Types**: Use the most specific error class for the situation
-2. **Include Context**: Always include relevant context information when throwing errors
-3. **Handle Errors at Boundaries**: Handle errors at component or service boundaries
-4. **Use Retry for Transient Failures**: Use retry for operations that might succeed on retry
-5. **Monitor Error Patterns**: Use the error handling service to monitor error patterns
+1. **Use appropriate error types** for different kinds of errors
+2. **Include context** in error objects to aid debugging
+3. **Set appropriate severity levels** based on the impact of the error
+4. **Use the retry mechanism** for transient failures
+5. **Subscribe to error events** to display errors in the UI
+6. **Clean up error subscriptions** when components unmount
 
 ## Migration Guide
 
-If you're migrating from the old error handling system:
+If you're migrating from an older error handling approach:
 
-1. Replace imports from `lib/error-handling/error-types` with `lib/error-handling`
-2. Replace imports from `lib/error-handling/error-handler` with `lib/error-handling`
-3. Replace imports from `lib/error-handling/retry-mechanism` with `lib/error-handling`
+1. Replace direct throws with appropriate error types
+2. Replace try/catch blocks with errorHandler.handleError
+3. Replace custom retry logic with the retry functions
+4. Update error displays to subscribe to the error handler
 
-## Future Improvements
+## File Structure
 
-- Add integration with external error tracking services
-- Implement more sophisticated circuit breaker strategies
-- Add support for error aggregation and analysis
+- `lib/error-types.ts`: Error classes and types
+- `lib/error-handler.ts`: Error handling service
+- `lib/retry-mechanism.ts`: Retry functions
+- `lib/error-handling.ts`: Main entry point that re-exports everything
+- `lib/error-handling/`: Compatibility layer for backward compatibility

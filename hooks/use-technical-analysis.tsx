@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import TradingService from "@/lib/trading/trading-service"
 import type { Kline, TradingSignal, StrategyParameters } from "@/lib/types/market-types"
 import { AppError } from "@/lib/error-handling/error-types"
+import { ScalpingStrategy } from "@/lib/trading/strategies/scalping-strategy"
 
 interface UseTechnicalAnalysisOptions {
   symbol?: string
@@ -24,6 +25,22 @@ export function useTechnicalAnalysis({
   interval = "1m",
   strategyParams = {},
 }: UseTechnicalAnalysisOptions = {}): UseTechnicalAnalysisResult {
+  // Initialize strategy with safe defaults
+  const strategy = useMemo(() => {
+    try {
+      return new ScalpingStrategy(strategyParams)
+    } catch (error) {
+      console.error("Error initializing strategy:", error)
+      return {
+        getParameters: () => ({}),
+        getActivePosition: () => null,
+        // Add other required methods with safe defaults
+        calculateSignals: () => [],
+        updateParameters: () => {},
+        reset: () => {},
+      }
+    }
+  }, [strategyParams])
   const [tradingService] = useState(() => new TradingService(symbol, interval, strategyParams))
   const [signal, setSignal] = useState<TradingSignal | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(false)

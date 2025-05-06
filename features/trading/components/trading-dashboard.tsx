@@ -96,21 +96,25 @@ export default function TradingDashboard() {
             <CardTitle>Current Position</CardTitle>
           </CardHeader>
           <CardContent>
-            {strategy.getActivePosition() ? (
-              <div className="text-sm">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="font-medium">Type:</div>
-                  <div className={strategy.getActivePosition()?.type === "LONG" ? "text-green-500" : "text-red-500"}>
-                    {strategy.getActivePosition()?.type}
+            {strategy && strategy.getActivePosition ? (
+              strategy.getActivePosition() ? (
+                <div className="text-sm">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="font-medium">Type:</div>
+                    <div className={strategy.getActivePosition()?.type === "LONG" ? "text-green-500" : "text-red-500"}>
+                      {strategy.getActivePosition()?.type}
+                    </div>
+                    <div className="font-medium">Entry Price:</div>
+                    <div>{strategy.getActivePosition()?.entryPrice}</div>
+                    <div className="font-medium">Entry Time:</div>
+                    <div>{new Date(strategy.getActivePosition()?.entryTime || 0).toLocaleString()}</div>
                   </div>
-                  <div className="font-medium">Entry Price:</div>
-                  <div>{strategy.getActivePosition()?.entryPrice}</div>
-                  <div className="font-medium">Entry Time:</div>
-                  <div>{new Date(strategy.getActivePosition()?.entryTime || 0).toLocaleString()}</div>
                 </div>
-              </div>
+              ) : (
+                <div className="text-muted-foreground">No active position</div>
+              )
             ) : (
-              <div className="text-muted-foreground">No active position</div>
+              <div className="text-muted-foreground">Loading position data...</div>
             )}
           </CardContent>
         </Card>
