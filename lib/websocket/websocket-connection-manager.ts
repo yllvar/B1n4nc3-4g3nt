@@ -29,7 +29,6 @@ export interface ConnectionManagerOptions {
 
 export class WebSocketConnectionManager {
   private client: UnifiedWebSocketClient
-  private readonly baseUrl: string
   private connectionId: string | null = null
   private activeStreams: Set<string> = new Set()
   private metricsInterval: NodeJS.Timeout | null = null
@@ -37,7 +36,6 @@ export class WebSocketConnectionManager {
   private lastMetrics: WebSocketMetrics | null = null
 
   constructor(options: ConnectionManagerOptions) {
-    this.baseUrl = options.baseUrl
     this.client = new UnifiedWebSocketClient({
       baseUrl: options.baseUrl,
       initialBackoffDelay: options.reconnectOptions?.initialDelay || env.WS_RECONNECT_INITIAL_DELAY,
@@ -61,18 +59,14 @@ export class WebSocketConnectionManager {
    * Connect to the WebSocket server
    */
   public connect(): Promise<void> {
-    return Promise.resolve(this.client.connect(this.baseUrl))
+    return this.client.connect()
   }
 
   /**
    * Disconnect from the WebSocket server
    */
-  public disconnect(stream?: string): void {
-    if (stream) {
-      this.client.disconnect(stream)
-    } else {
-      this.client.disconnectAll()
-    }
+  public disconnect(): void {
+    this.client.disconnect()
   }
 
   /**
@@ -80,7 +74,7 @@ export class WebSocketConnectionManager {
    */
   public subscribe(stream: string, callback: (data: any) => void): () => void {
     this.activeStreams.add(stream)
-    return this.client.subscribeToStream(stream, callback)
+    return this.client.subscribe(stream, callback)
   }
 
   /**
@@ -102,14 +96,14 @@ export class WebSocketConnectionManager {
    * Check if the WebSocket is connected
    */
   public isConnected(): boolean {
-    return this.client.getStatus() === "connected"
+    return this.client.isConnected()
   }
 
   /**
    * Get current connection state
    */
   public getConnectionState(): ConnectionState {
-    return this.client.getStatus() as ConnectionState
+    return this.client.getConnectionState()
   }
 
   /**
@@ -163,16 +157,16 @@ export class WebSocketConnectionManager {
     this.client.addEventListener(this.connectionId, (event: WebSocketEvent) => {
       switch (event.type) {
         case "state_change":
-          this.handleStateChange(event.state ?? "disconnected" as ConnectionState)
+          this.handleStateChange(event.state)
           break
         case "error":
-          this.handleError(event.error ?? new Error("Unknown error"))
+          this.handleError(event.error)
           break
         case "heartbeat":
-          this.handleHeartbeat(event.success ?? false, event.latency ?? 0)
+          this.handleHeartbeat(event.success, event.latency)
           break
         case "reconnect":
-          this.handleReconnect(event.attempt ?? 0, event.maxAttempts ?? 5)
+          this.handleReconnect(event.attempt, event.maxAttempts)
           break
       }
     })
@@ -182,24 +176,8 @@ export class WebSocketConnectionManager {
    * Handle state change events
    */
   private handleStateChange(state: ConnectionState): void {
+    // Additional state change handling can be added here
     console.log(`WebSocket state changed to: ${state}`)
-    
-    // When connection fails, start fallback polling for active streams
-    if (state === "disconnected") {
-      this.activeStreams.forEach(stream => {
-        const callbacks = this.client.getCallbacksForStream(stream)
-        callbacks?.forEach(callback => {
-          this.client.startFallbackPolling(stream, callback)
-        })
-      })
-    }
-    
-    // When reconnected, stop fallback polling
-    if (state === "connected") {
-      this.activeStreams.forEach(stream => {
-        this.client.stopFallbackPolling(stream)
-      })
-    }
   }
 
   /**
@@ -258,8 +236,18 @@ export class WebSocketConnectionManager {
   }
 }
 
-// Use the singleton instance from unified-websocket-client.ts
-const unifiedWebSocketClient = require("../websocket/unified-websocket-client").unifiedWebSocketClient
+// Create a single instance of UnifiedWebSocketClient
+const unifiedWebSocketClient = new UnifiedWebSocketClient({
+  baseUrl: env.BINANCE_WS_BASE_URL || "wss://stream.binance.com:9443/ws",
+  initialBackoffDelay: env.WS_RECONNECT_INITIAL_DELAY,
+  maxBackoffDelay: env.WS_RECONNECT_MAX_DELAY,
+  backoffFactor: env.WS_RECONNECT_FACTOR,
+  maxReconnectAttempts: env.WS_RECONNECT_MAX_ATTEMPTS,
+  heartbeatInterval: env.WS_HEARTBEAT_INTERVAL,
+  heartbeatTimeout: env.WS_HEARTBEAT_TIMEOUT,
+  debug: true, // Set to true for more verbose logging
+  autoReconnect: true,
+})
 
 // Export the connection manager with the client instance
 export const binanceConnectionManager = {
@@ -304,9 +292,9 @@ export const binanceConnectionManager = {
   },
 
   // Add the missing addMetricsListener method
-  addMetricsListener: (listener: (metrics: WebSocketMetrics) => void) => {
+  addMetricsListener: (listener: (WebSocketMetrics) => void) => {
     // Create a subscription to the unified client's status updates
-    const unsubscribe = unifiedWebSocketClient.subscribe((status: ConnectionState, metrics: WebSocketMetrics) => {
+    const unsubscribe = unifiedWebSocketClient.subscribe((status, metrics) => {
       listener(metrics)
     })
 

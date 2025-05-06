@@ -54,7 +54,7 @@ export function WebSocketConnectionStatus() {
       toast({
         title: "WebSocket Reconnected",
         description: "Successfully reconnected to WebSocket streams.",
-        variant: "default",
+        variant: "success",
       })
     } catch (error) {
       toast({

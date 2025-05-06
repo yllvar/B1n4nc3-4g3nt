@@ -18,17 +18,20 @@ export function MockWebSocketTester() {
   const [simulateDisconnects, setSimulateDisconnects] = useState(false)
 
   useEffect(() => {
-    // Connection status will be updated by connect/disconnect handlers
+    // Update connection status
+    const interval = setInterval(() => {
+      setIsConnected(mockWebSocketClient.isConnected())
+    }, 1000)
+
+    return () => clearInterval(interval)
   }, [])
 
   const handleConnect = () => {
     mockWebSocketClient.connect()
-    setIsConnected(true)
   }
 
   const handleDisconnect = () => {
     mockWebSocketClient.disconnect()
-    setIsConnected(false)
   }
 
   const handleSubscribe = () => {

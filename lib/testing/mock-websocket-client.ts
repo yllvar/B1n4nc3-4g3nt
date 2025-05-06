@@ -7,17 +7,17 @@ import { mockWebSocketService } from "./mock-websocket-service"
 
 export class MockWebSocketClient {
   private callbacks: Map<string, Set<(data: any) => void>> = new Map()
-  private _isConnected = false
+  private isConnected = false
 
   constructor() {
     // Set up event listeners for the mock service
     mockWebSocketService.on("open", () => {
-      this._isConnected = true
+      this.isConnected = true
       console.log("[MockWebSocketClient] Connected")
     })
 
     mockWebSocketService.on("close", () => {
-      this._isConnected = false
+      this.isConnected = false
       console.log("[MockWebSocketClient] Disconnected")
     })
 
@@ -77,7 +77,7 @@ export class MockWebSocketClient {
   }
 
   public isConnected(): boolean {
-    return this._isConnected
+    return this.isConnected
   }
 
   public subscribe(stream: string, callback: (data: any) => void): void {

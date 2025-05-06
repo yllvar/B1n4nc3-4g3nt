@@ -22,18 +22,10 @@ export function LLMSignalTest() {
   const [symbol, setSymbol] = useState("BTC/USDT")
 
   // Get market data
-  const { 
-    price,
-    ticker,
-    isLoading: isLoadingMarketData, 
-    error: marketDataError 
-  } = useEnhancedMarketData({
-    symbol,
-    subscribeTo24hrTicker: true
-  })
+  const { marketData, isLoading: isLoadingMarketData, error: marketDataError } = useEnhancedMarketData(symbol)
 
   const runLiveTest = async () => {
-    if (!price || !ticker) {
+    if (!marketData) {
       setError("No market data available")
       setTestStatus("error")
       return
@@ -44,20 +36,27 @@ export function LLMSignalTest() {
     setTestStatus("idle")
 
     try {
-      // Simplified analysis using just price and price change
-      const currentPrice = price || 0
-      const priceChange = ticker.priceChangePercent || 0
-      
-      // Determine basic signal based on price movement
+      // Extract data from market data
+      const currentPrice = marketData.lastPrice || 0
+      const ema20 = marketData.indicators?.ema20 || 0
+      const ema50 = marketData.indicators?.ema50 || 0
+      const rsi = marketData.indicators?.rsi || 0
+      const macd = marketData.indicators?.macd || 0
+      const macdSignal = marketData.indicators?.macdSignal || 0
+      const macdHistogram = marketData.indicators?.macdHistogram || 0
+      const atr = marketData.indicators?.atr || 0
+      const vwap = marketData.indicators?.vwap || 0
+
+      // Determine technical signal
       let technicalSignal = "NEUTRAL"
       let signalStrength = 50
 
-      if (priceChange > 0) {
+      if (currentPrice > ema20 && ema20 > ema50 && rsi > 50) {
         technicalSignal = "BUY"
-        signalStrength = Math.min(100, 50 + Math.round(priceChange * 2))
-      } else if (priceChange < 0) {
-        technicalSignal = "SELL" 
-        signalStrength = Math.min(100, 50 + Math.round(Math.abs(priceChange) * 2))
+        signalStrength = Math.min(100, 50 + Math.round((rsi - 50) * 1.5))
+      } else if (currentPrice < ema20 && ema20 < ema50 && rsi < 50) {
+        technicalSignal = "SELL"
+        signalStrength = Math.min(100, 50 + Math.round((50 - rsi) * 1.5))
       }
 
       // Create request
@@ -68,17 +67,24 @@ export function LLMSignalTest() {
         technicalSignal,
         signalStrength,
         indicators: {
-          "Price Change": priceChange,
+          "EMA(20)": ema20,
+          "EMA(50)": ema50,
+          "RSI(14)": rsi,
+          MACD: macd,
+          "MACD Signal": macdSignal,
+          "MACD Histogram": macdHistogram,
+          "ATR(14)": atr,
+          VWAP: vwap,
         },
         recentPriceAction: {
-          percentChange24h: ticker.priceChangePercent || 0,
-          percentChange1h: 0, // Default value since we don't have 1h data
-          volumeChange24h: ticker.volume || 0,
+          percentChange24h: marketData.priceChangePercent24h || 0,
+          percentChange1h: marketData.priceChangePercent1h || 0,
+          volumeChange24h: marketData.volumeChangePercent24h || 0,
         },
         marketContext: {
           btcCorrelation: symbol !== "BTC/USDT" ? 0.8 : 1.0, // Example correlation
-          marketSentiment: priceChange > 0 ? "Bullish" : "Bearish",
-          volatilityRank: Math.abs(priceChange) / 100, // Simplified volatility measure
+          marketSentiment: rsi > 70 ? "Overbought" : rsi < 30 ? "Oversold" : "Neutral",
+          volatilityRank: atr / currentPrice, // Normalized ATR as volatility rank
         },
       }
 
@@ -151,29 +157,27 @@ export function LLMSignalTest() {
           </Select>
         </div>
 
-        {price && ticker && (
+        {marketData && (
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div>
               <h3 className="text-sm font-medium text-gray-500">Current Price</h3>
-              <p className="text-base font-medium mt-1">{price.toFixed(2) || "N/A"}</p>
+              <p className="text-base font-medium mt-1">{marketData.lastPrice?.toFixed(2) || "N/A"}</p>
             </div>
             <div>
               <h3 className="text-sm font-medium text-gray-500">24h Change</h3>
               <p
-                className={`text-base font-medium mt-1 ${(ticker.priceChangePercent || 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                className={`text-base font-medium mt-1 ${(marketData.priceChangePercent24h || 0) >= 0 ? "text-green-600" : "text-red-600"}`}
               >
-                {ticker.priceChangePercent?.toFixed(2) || "0"}%
+                {marketData.priceChangePercent24h?.toFixed(2) || "0"}%
               </p>
             </div>
             <div>
               <h3 className="text-sm font-medium text-gray-500">Volume (24h)</h3>
-              <p className="text-base font-medium mt-1">{ticker.volume?.toLocaleString() || "N/A"}</p>
+              <p className="text-base font-medium mt-1">{marketData.volume24h?.toLocaleString() || "N/A"}</p>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-500">Price Trend</h3>
-              <p className="text-base font-medium mt-1">
-                {ticker.priceChangePercent >= 0 ? "↑ Bullish" : "↓ Bearish"}
-              </p>
+              <h3 className="text-sm font-medium text-gray-500">RSI (14)</h3>
+              <p className="text-base font-medium mt-1">{marketData.indicators?.rsi?.toFixed(2) || "N/A"}</p>
             </div>
           </div>
         )}

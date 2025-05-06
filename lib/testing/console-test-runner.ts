@@ -6,7 +6,7 @@
 type TestFunction = () => Promise<void> | void
 type TestSuite = Record<string, TestFunction>
 
-export interface TestResult {
+interface TestResult {
   name: string
   passed: boolean
   error?: Error

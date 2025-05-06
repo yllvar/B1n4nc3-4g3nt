@@ -100,7 +100,7 @@ export default function WebSocketStatus() {
   }
 
   const getHealthStatus = () => {
-    const health = metrics?.connectionHealth ?? 0
+    const health = metrics.connectionHealth
     if (health >= 90) return { label: "Excellent", icon: <CheckCircle className="h-4 w-4 text-green-500" /> }
     if (health >= 70) return { label: "Good", icon: <CheckCircle className="h-4 w-4 text-green-400" /> }
     if (health >= 50) return { label: "Fair", icon: <AlertTriangle className="h-4 w-4 text-yellow-500" /> }
@@ -148,10 +148,10 @@ export default function WebSocketStatus() {
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {getConnectionIcon(binanceConnectionManager.getConnectionState() ?? ConnectionState.DISCONNECTED)}
-            <h3 className="font-medium">{binanceConnectionManager.getConnectionState() ?? ConnectionState.DISCONNECTED}</h3>
+            {getConnectionIcon(metrics.connectionState)}
+            <h3 className="font-medium">{metrics.connectionState}</h3>
           </div>
-          {getConnectionBadge(binanceConnectionManager.getConnectionState() ?? ConnectionState.DISCONNECTED)}
+          {getConnectionBadge(metrics.connectionState)}
         </div>
 
         <div className="space-y-2">
@@ -176,14 +176,14 @@ export default function WebSocketStatus() {
             <span className="text-xs text-muted-foreground">Latency</span>
             <p className="flex items-center gap-1 font-medium">
               <Clock className="h-4 w-4 text-blue-500" />
-              {metrics.averageLatency?.toFixed(0) ?? 0} ms
+              {metrics.averageLatency.toFixed(0)} ms
             </p>
           </div>
           <div className="space-y-1">
             <span className="text-xs text-muted-foreground">Last Heartbeat</span>
             <p className="flex items-center gap-1 font-medium">
               <Activity className="h-4 w-4 text-green-500" />
-              {formatTime(metrics.lastHeartbeatTime ?? null)}
+              {formatTime(metrics.lastHeartbeatTime)}
             </p>
           </div>
           <div className="space-y-1">
@@ -195,18 +195,18 @@ export default function WebSocketStatus() {
           </div>
         </div>
 
-        {metrics.reconnects > 0 && (
+        {metrics.reconnectAttempts > 0 && (
           <div className="rounded-md bg-amber-50 p-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
             <div className="flex items-center">
               <RefreshCw className="mr-2 h-4 w-4" />
               <span>
-                {metrics.reconnects} reconnection{metrics.reconnects !== 1 ? "s" : ""} attempted
+                {metrics.reconnectAttempts} reconnection{metrics.reconnectAttempts !== 1 ? "s" : ""} attempted
               </span>
             </div>
           </div>
         )}
 
-        {(metrics.errorCount ?? 0) > 0 && (
+        {metrics.errorCount > 0 && (
           <div className="rounded-md bg-red-50 p-2 text-sm text-red-800 dark:bg-red-950 dark:text-red-300">
             <div className="flex items-center">
               <AlertTriangle className="mr-2 h-4 w-4" />

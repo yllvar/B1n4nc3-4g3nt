@@ -86,10 +86,6 @@ export class TogetherAIService {
         response_format: { type: "json_object" }, // Request JSON response
       })
 
-      if (!response.choices?.[0]?.message?.content) {
-        console.error("Invalid Together AI response format")
-        return null
-      }
       const content = response.choices[0].message.content
       return this.parseResponse(content)
     } catch (error) {

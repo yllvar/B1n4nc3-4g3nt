@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { testRunner } from "@/lib/testing/console-test-runner"
 import { websocketTests } from "@/lib/testing/websocket-tests"
-import type { TestResult } from "@/lib/testing/console-test-runner"
 
 export default function ConsoleTestPage() {
   const [isRunning, setIsRunning] = useState(false)
@@ -57,11 +56,9 @@ export default function ConsoleTestPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {Object.entries(results).map(([suiteName, suiteResults]) => {
-                // Type assertion to tell TypeScript that suiteResults is an array
-                const suiteResultsArray = suiteResults as TestResult[];
-                const totalTests = suiteResultsArray.length
-                const passedTests = suiteResultsArray.filter((r) => r.passed).length
+              {Object.entries(results).map(([suiteName, suiteResults]: [string, any[]]) => {
+                const totalTests = suiteResults.length
+                const passedTests = suiteResults.filter((r) => r.passed).length
                 const passPercentage = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0
 
                 return (
@@ -76,7 +73,7 @@ export default function ConsoleTestPage() {
                     </div>
 
                     <div className="space-y-2">
-                      {suiteResultsArray.map((result, index) => (
+                      {suiteResults.map((result, index) => (
                         <div
                           key={index}
                           className={`p-2 rounded-md text-sm ${

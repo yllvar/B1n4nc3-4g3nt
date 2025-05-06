@@ -1,14 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { calculateRSI, calculateEMA, calculateSMA, calculateVWAP } from "@/lib/indicators/technical-indicators"
-
-// Wrapper function to get single VWAP value from price data
-function calculateSingleVWAP(prices: number[], volumes: number[], period = 14): number | null {
-  if (prices.length === 0 || volumes.length === 0 || prices.length !== volumes.length) return null
-  const result = calculateVWAP(prices, volumes, period)
-  return result[result.length - 1]
-}
+import { calculateRSI, calculateEMA, calculateSMA } from "@/lib/indicators/technical-indicators"
 import { useKlineData } from "./use-kline-data"
 
 interface UseTechnicalIndicatorsOptions {
@@ -22,7 +15,6 @@ interface IndicatorValues {
   sma50: number | null
   macd: number | null
   macdSignal: number | null
-  vwap: number | null
 }
 
 export function useTechnicalIndicators(symbol: string, options: UseTechnicalIndicatorsOptions = {}) {
@@ -34,7 +26,6 @@ export function useTechnicalIndicators(symbol: string, options: UseTechnicalIndi
     sma50: null,
     macd: null,
     macdSignal: null,
-    vwap: null
   })
 
   // Memoize the extraction of price data from klineData
@@ -51,17 +42,7 @@ export function useTechnicalIndicators(symbol: string, options: UseTechnicalIndi
 
   // Memoize the calculation of technical indicators
   const calculateIndicators = useCallback(() => {
-    if (priceData.closes.length === 0) {
-      setIndicators({
-        rsi: null,
-        ema20: null,
-        sma50: null,
-        macd: null,
-        macdSignal: null,
-        vwap: null
-      })
-      return
-    }
+    if (priceData.closes.length === 0) return
 
     const { closes } = priceData
 
@@ -95,48 +76,18 @@ export function useTechnicalIndicators(symbol: string, options: UseTechnicalIndi
       const macd = macdLine[macdLine.length - 1]
       const macdSignal = macdSignalValues[macdSignalValues.length - 1]
 
-      const currentVwap = calculateSingleVWAP(
-        priceData.closes,
-        priceData.volumes
-      )
-      setIndicators({ rsi, ema20, sma50, macd, macdSignal, vwap: currentVwap })
+      setIndicators({ rsi, ema20, sma50, macd, macdSignal })
     } else {
-      const vwap = calculateSingleVWAP(
-        priceData.closes,
-        priceData.volumes
-      )
-      setIndicators({ rsi, ema20, sma50, macd: null, macdSignal: null, vwap })
+      setIndicators({ rsi, ema20, sma50, macd: null, macdSignal: null })
     }
   }, [priceData])
 
   // Effect to calculate indicators when price data changes
   useEffect(() => {
-    try {
-      if (!isLoading && !error && priceData.closes.length > 0) {
-        calculateIndicators()
-      }
-    } catch (err) {
-      console.error('Failed to calculate indicators:', err)
-      setIndicators({
-        rsi: null,
-        ema20: null,
-        sma50: null,
-        macd: null,
-        macdSignal: null,
-        vwap: null
-      })
+    if (!isLoading && !error && priceData.closes.length > 0) {
+      calculateIndicators()
     }
   }, [calculateIndicators, isLoading, error, priceData.closes.length])
 
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const refresh = useCallback(() => {
-    setIsRefreshing(true)
-    try {
-      calculateIndicators()
-    } finally {
-      setIsRefreshing(false)
-    }
-  }, [calculateIndicators])
-
-  return { indicators, isLoading, error, refresh }
+  return { indicators, isLoading, error }
 }

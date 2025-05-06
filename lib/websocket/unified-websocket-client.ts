@@ -1,14 +1,15 @@
 "use client"
 
 import { EventEmitter } from "events"
-import { BinanceWS } from "./binance-ws"
 
-export type WebSocketStatus = "connected" | "connecting" | "disconnected"
+export type WebSocketStatus = "connected" | "connecting" | "disconnected" | "reconnecting" | "error" | "fallback"
 
 export enum ConnectionState {
   CONNECTED = "connected",
-  CONNECTING = "connecting", 
+  CONNECTING = "connecting",
   DISCONNECTED = "disconnected",
+  RECONNECTING = "reconnecting",
+  FAILED = "failed",
 }
 
 export interface WebSocketMetrics {
@@ -52,7 +53,7 @@ export interface WebSocketClientOptions {
 
 export class UnifiedWebSocketClient extends EventEmitter {
   private baseUrl: string
-  private sockets: Map<string, BinanceWS> = new Map()
+  private sockets: Map<string, WebSocket> = new Map()
   private status: WebSocketStatus = "disconnected"
   private reconnectInterval = 5000
   private maxReconnectAttempts = 10
@@ -61,7 +62,7 @@ export class UnifiedWebSocketClient extends EventEmitter {
   private debug = false
   private autoReconnect = true
   private reconnectAttempts = 0
-  private statusListeners: Array<(status: WebSocketStatus, metrics: WebSocketMetrics) => void> = []
+  private listeners: Array<(status: WebSocketStatus, metrics: WebSocketMetrics) => void> = []
   private eventListeners: Map<string, Set<(event: WebSocketEvent) => void>> = new Map()
   private metrics: WebSocketMetrics = {
     latency: 0,
@@ -81,7 +82,6 @@ export class UnifiedWebSocketClient extends EventEmitter {
   private heartbeatTimer: NodeJS.Timeout | null = null
   private circuitBreakerTripped = false
   private circuitBreakerResetTimeout: NodeJS.Timeout | null = null
-  private callbacks: Map<string, ((data: any) => void)[]> = new Map()
 
   constructor(options: WebSocketClientOptions) {
     super()
@@ -143,10 +143,9 @@ export class UnifiedWebSocketClient extends EventEmitter {
   }
 
   public subscribe(callback: (status: WebSocketStatus, metrics: WebSocketMetrics) => void): () => void {
-    this.statusListeners.push(callback)
+    this.listeners.push(callback)
     return () => {
-      const index = this.statusListeners.indexOf(callback)
-      this.statusListeners.splice(index, 1)
+      this.listeners = this.listeners.filter((listener) => listener !== callback)
     }
   }
 
@@ -170,11 +169,13 @@ export class UnifiedWebSocketClient extends EventEmitter {
   }
 
   private notifyListeners() {
-    this.statusListeners.forEach((listener) => listener(this.status, { ...this.metrics }))
+    this.listeners.forEach((listener) => {
+      listener(this.status, { ...this.metrics })
+    })
   }
 
-  public emit(type: string, data: any = {}): boolean {
-    const result = super.emit(type, data)
+  public emit(type: string, data: any = {}): void {
+    super.emit(type, data)
 
     // Create event object
     const event: WebSocketEvent = {
@@ -192,8 +193,6 @@ export class UnifiedWebSocketClient extends EventEmitter {
         }
       })
     })
-    
-    return result
   }
 
   public connect(stream: string, messageHandler?: (data: any) => void): void {
@@ -211,23 +210,13 @@ export class UnifiedWebSocketClient extends EventEmitter {
     this.notifyListeners()
 
     try {
-      // Format the URL correctly for Binance Futures API
-      const isCombinedStream = stream.includes(',') || stream.includes('&')
-      const url = isCombinedStream 
-        ? `${this.baseUrl}/stream?streams=${encodeURIComponent(stream)}`
-        : `${this.baseUrl}/ws/${stream}`
+      // Format the URL correctly - Binance requires the stream to be part of the path or as a parameter
+      const url = stream.includes("/") ? `${this.baseUrl}${stream}` : `${this.baseUrl}/${stream}`
 
       this.log(`Connecting to WebSocket: ${url}`)
-      const socket = new BinanceWS({ url })
+      const socket = new WebSocket(url)
 
-      const handleError = (error: Error) => {
-        this.handleSocketError(stream, error)
-        if (this.isFallbackMode()) {
-          this.startFallbackPolling(stream, messageHandler || (() => {}))
-        }
-      }
-
-      socket.on('open', () => {
+      socket.onopen = () => {
         this.log(`Connected to ${stream}`)
         this.status = "connected"
         this.reconnectAttempts = 0
@@ -235,53 +224,41 @@ export class UnifiedWebSocketClient extends EventEmitter {
         this.metrics.lastError = undefined
         this.notifyListeners()
         this.emit("connect", { stream })
-        this.stopFallbackPolling(stream)
-      })
+      }
 
-      socket.on('close', (event) => {
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          messageHandler?.(data)
+          this.messageCount++
+          this.metrics.lastMessageTime = Date.now()
+          this.emit("message", { stream, data })
+        } catch (error) {
+          this.log(`Error parsing message from ${stream}:`, error)
+        }
+      }
+
+      socket.onerror = (error) => {
+        this.handleSocketError(stream, error as Error)
+      }
+
+      socket.onclose = (event) => {
         this.log(
           `Disconnected from ${stream} with code ${event.code} and reason: ${event.reason || "No reason provided"}`,
         )
         this.sockets.delete(stream)
         this.status = "disconnected"
         this.notifyListeners()
-        
-        this.emit("disconnect", { 
-          stream, 
-          code: event.code, 
-          reason: event.reason,
-          isNormalClosure: event.code === 1000
-        })
-        
-        if (this.autoReconnect && event.code !== 1000) {
+        this.emit("disconnect", { stream, code: event.code, reason: event.reason })
+        if (this.autoReconnect) {
           this.reconnect(stream, messageHandler)
-        } else if (event.code === 1000) {
-          this.log(`Normal WebSocket closure for ${stream}, not attempting reconnect`)
         }
-      })
-
-      socket.on('error', handleError)
-
-      const messageCallback = messageHandler || (() => {})
-      socket.connect(
-        (data) => {
-          try {
-            messageCallback(data)
-            this.messageCount++
-            this.metrics.lastMessageTime = Date.now()
-            this.emit("message", { stream, data })
-          } catch (error) {
-            this.log(`Error handling message from ${stream}:`, error)
-            handleError(new Error(`Message handling error: ${error instanceof Error ? error.message : String(error)}`))
-          }
-        },
-        handleError
-      )
+      }
 
       this.sockets.set(stream, socket)
     } catch (error) {
       this.log(`Error connecting to ${stream}:`, error)
-      this.status = "disconnected"
+      this.status = "error"
       this.metrics.errorCount = (this.metrics.errorCount || 0) + 1
       this.metrics.lastError = error as Error
       this.notifyListeners()
@@ -292,83 +269,42 @@ export class UnifiedWebSocketClient extends EventEmitter {
     }
   }
 
-  private async cleanupSocket(stream: string): Promise<void> {
-    const socket = this.sockets.get(stream)
-    if (socket) {
-    return new Promise((resolve) => {
-      const onClose = () => {
-        socket.off('close', onClose)
-        resolve()
-      }
-      socket.on('close', onClose)
-      try {
-        socket.close()
-      } catch (e) {
-        this.log("Error closing socket:", e)
-      }
-      this.sockets.delete(stream)
-    })
-    }
-  }
-
   private handleSocketError(stream: string, error: Error) {
     this.log(`WebSocket error for ${stream}:`, error)
+    this.status = "error"
     this.metrics.errorCount = (this.metrics.errorCount || 0) + 1
     this.metrics.lastError = error
     this.notifyListeners()
     this.emit("error", { stream, error })
-    
-    // Explicitly trigger reconnection
-    if (this.autoReconnect) {
-      this.reconnect(stream)
-    }
   }
 
-  private async reconnect(stream: string, messageHandler?: (data: any) => void): Promise<void> {
+  private reconnect(stream: string, messageHandler?: (data: any) => void): void {
     if (this.circuitBreakerTripped) {
       this.log("Circuit breaker is tripped, not reconnecting")
       return
     }
 
-    // Calculate backoff delay with jitter
-    const baseDelay = Math.min(
-      this.reconnectInterval * Math.pow(2, this.reconnectAttempts),
-      this.maxReconnectAttempts * 1000
-    )
-    const jitter = Math.random() * 0.2 + 0.9 // 0.9-1.1 multiplier
-    const delay = Math.floor(baseDelay * jitter)
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.log(`Max reconnect attempts reached for ${stream}`)
+      this.status = "fallback"
+      this.notifyListeners()
+      this.emit("state_change", { state: ConnectionState.FAILED })
+      this.tripCircuitBreaker()
+      return
+    }
 
     this.reconnectAttempts++
     this.metrics.reconnects++
-    this.status = "connecting"
+    this.status = "reconnecting"
     this.notifyListeners()
-    this.emit("reconnect", { 
-      attempt: this.reconnectAttempts, 
-      maxAttempts: this.maxReconnectAttempts,
-      delay
-    })
+    this.emit("reconnect", { attempt: this.reconnectAttempts, maxAttempts: this.maxReconnectAttempts })
 
-    this.log(`Reconnecting to ${stream} in ${delay}ms (attempt ${this.reconnectAttempts})...`)
-    
-    // Clean up existing socket
-    await this.cleanupSocket(stream)
-
-    // Wait for delay period
-    await new Promise(resolve => setTimeout(resolve, delay))
-
-    try {
-      await this.connect(stream, messageHandler)
-    } catch (error) {
-      this.log(`Reconnection attempt ${this.reconnectAttempts} failed:`, error)
-      
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnect(stream, messageHandler)
-      } else {
-        this.log(`Max reconnection attempts (${this.maxReconnectAttempts}) reached`)
-        this.tripCircuitBreaker()
-        this.emit("max_reconnects", { stream })
+    this.log(`Reconnecting to ${stream} (attempt ${this.reconnectAttempts})...`)
+    setTimeout(() => {
+      if (messageHandler) {
+        this.connect(stream, messageHandler)
       }
-    }
+    }, this.reconnectInterval)
   }
 
   public disconnect(stream: string): void {
@@ -410,7 +346,7 @@ export class UnifiedWebSocketClient extends EventEmitter {
   }
 
   public isFallbackMode(): boolean {
-    return this.circuitBreakerTripped
+    return this.status === "fallback"
   }
 
   public resetCircuitBreaker(): void {
@@ -437,164 +373,14 @@ export class UnifiedWebSocketClient extends EventEmitter {
   }
 
   public subscribeToStream(stream: string, callback: (data: any) => void): () => void {
-    if (!this.callbacks.has(stream)) {
-      this.callbacks.set(stream, [])
-    }
-    this.callbacks.get(stream)?.push(callback)
     this.connect(stream, callback)
-    
-    return () => {
-      const callbacks = this.callbacks.get(stream)
-      if (callbacks) {
-        const index = callbacks.indexOf(callback)
-        if (index !== -1) {
-          callbacks.splice(index, 1)
-        }
-        if (callbacks.length === 0) {
-          this.callbacks.delete(stream)
-          this.disconnect(stream)
-        }
-      }
-    }
+    return () => this.disconnect(stream)
   }
 
   public connectToStreams(streams: string[], callback: (data: any) => void): () => void {
-    streams.forEach(stream => {
-      if (!this.callbacks.has(stream)) {
-        this.callbacks.set(stream, [])
-      }
-      this.callbacks.get(stream)?.push(callback)
-      this.connect(stream, callback)
-    })
-    
-    return () => {
-      streams.forEach(stream => {
-        const callbacks = this.callbacks.get(stream)
-        if (callbacks) {
-          const index = callbacks.indexOf(callback)
-          if (index !== -1) {
-            callbacks.splice(index, 1)
-          }
-          if (callbacks.length === 0) {
-            this.callbacks.delete(stream)
-            this.disconnect(stream)
-          }
-        }
-      })
-    }
+    streams.forEach((stream) => this.connect(stream, callback))
+    return () => streams.forEach((stream) => this.disconnect(stream))
   }
-
-  private fallbackPollingIntervals: Map<string, NodeJS.Timeout> = new Map();
-  private fallbackDataHandlers: Map<string, (data: any) => void> = new Map();
-
-  public async fetchFallbackData<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
-    try {
-      // Use REST API fallback
-      const baseUrl = process.env.BINANCE_API_BASE_URL || "https://fapi.binance.com";
-      let url = `${baseUrl}${endpoint}`;
-
-      if (params) {
-        const queryParams = new URLSearchParams();
-        Object.entries(params).forEach(([key, value]) => {
-          queryParams.append(key, value);
-        });
-        url += `?${queryParams.toString()}`;
-      }
-
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-      };
-      
-      // Add API key if available
-      const apiKey = process.env.BINANCE_API_KEY;
-      if (apiKey) {
-        headers["X-MBX-APIKEY"] = apiKey;
-      }
-
-      const response = await fetch(url, { headers });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      this.log(`Error in fetchFallbackData: ${error}`);
-      this.emit("error", { error });
-      throw error;
-    }
-  }
-
-  /**
-   * Start fallback polling for a stream
-   */
-  public startFallbackPolling(stream: string, callback: (data: any) => void, interval = 5000): void {
-    // Stop any existing polling for this stream
-    this.stopFallbackPolling(stream);
-
-    // Store the callback
-    this.fallbackDataHandlers.set(stream, callback);
-
-    // Extract symbol from stream name (e.g. btcusdt@ticker -> BTCUSDT)
-    const symbol = stream.split("@")[0].toUpperCase();
-    
-    // Determine the appropriate REST endpoint based on stream type
-    let endpoint = "/fapi/v1/ticker/24hr";
-    let params: Record<string, string> = { symbol };
-
-    if (stream.includes("@bookTicker")) {
-      endpoint = "/fapi/v1/ticker/bookTicker";
-    } else if (stream.includes("@ticker")) {
-      endpoint = "/fapi/v1/ticker/price";
-    } else if (stream.includes("@depth")) {
-      endpoint = "/fapi/v1/depth";
-      params.limit = "20"; // Default depth limit
-    }
-
-    // Initial fetch
-    this.fetchFallbackData(endpoint, params)
-      .then((data) => callback(data))
-      .catch((error) => this.log(`Fallback polling error for ${stream}:`, error));
-
-    // Set up interval
-    const pollingInterval = setInterval(() => {
-      this.fetchFallbackData(endpoint, params)
-        .then((data) => callback(data))
-        .catch((error) => this.log(`Fallback polling error for ${stream}:`, error));
-    }, interval);
-
-    this.fallbackPollingIntervals.set(stream, pollingInterval);
-    this.log(`Started fallback polling for ${stream} (${interval}ms)`);
-  }
-
-  /**
-   * Stop fallback polling for a stream
-   */
-  public stopFallbackPolling(stream: string): void {
-    const interval = this.fallbackPollingIntervals.get(stream);
-    if (interval) {
-      clearInterval(interval);
-      this.fallbackPollingIntervals.delete(stream);
-      this.fallbackDataHandlers.delete(stream);
-      this.log(`Stopped fallback polling for ${stream}`);
-    }
-  }
-
-  /**
-   * Check if fallback polling is active for a stream
-   */
-  public isFallbackPolling(stream: string): boolean {
-    return this.fallbackPollingIntervals.has(stream);
-  }
-
-  /**
-   * Get all callbacks registered for a stream
-   */
-  public getCallbacksForStream(stream: string): ((data: any) => void)[] | undefined {
-    return this.callbacks.get(stream)
-  }
-
 }
 
 // Create and export the singleton instance

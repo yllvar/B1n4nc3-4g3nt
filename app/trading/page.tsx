@@ -11,7 +11,7 @@ export default function TradingPage() {
 
         <MarketDataProvider symbol="solusdt">
           <Suspense fallback={<Skeleton className="h-[600px] w-full rounded-xl" />}>
-            <TradingDashboard />
+            <TradingDashboard symbol="solusdt" />
           </Suspense>
         </MarketDataProvider>
       </div>

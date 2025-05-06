@@ -19,24 +19,11 @@ const MemoizedCurrentPriceCard = memo(CurrentPriceCard)
 const MemoizedMarketStats = memo(MarketStats)
 const MemoizedScalpingSignal = memo(ScalpingSignal)
 
-interface MarketDashboardProps {
-  symbol: string
-}
+export function MarketDashboard() {
+  const { symbol, currentPrice, priceChangePercent, highPrice, lowPrice, volume, isLoading, error, refresh } =
+    useMarketData()
 
-export function MarketDashboard({ symbol }: MarketDashboardProps) {
-  const { price, ticker, isLoading, error, refreshData } = useMarketData({ symbol })
-  const priceChangePercent = ticker?.priceChangePercent || null
-  const highPrice = ticker?.highPrice || null
-  const lowPrice = ticker?.lowPrice || null
-  const volume = ticker?.volume || null
-
-  const { klineData: rawKlineData, isLoading: isLoadingKlines } = useKlineData({ symbol, interval: "1m", limit: 30 })
-  const klineData = rawKlineData?.map(k => ({
-    ...k,
-    quoteVolume: 0,
-    takerBuyBaseVolume: 0,
-    takerBuyQuoteVolume: 0
-  })) || []
+  const { klineData, isLoading: isLoadingKlines } = useKlineData({ interval: "1m", limit: 30 })
   const isMobile = useMediaQuery("(max-width: 640px)")
 
   // Memoize the error component to prevent re-renders
@@ -74,7 +61,7 @@ export function MarketDashboard({ symbol }: MarketDashboardProps) {
             <span className="text-sm">Updating...</span>
           </div>
         ) : (
-          <Button variant="outline" size="sm" onClick={refreshData} className="gap-1">
+          <Button variant="outline" size="sm" onClick={refresh} className="gap-1">
             <RefreshCw className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Refresh</span>
           </Button>
@@ -83,7 +70,7 @@ export function MarketDashboard({ symbol }: MarketDashboardProps) {
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <MemoizedCurrentPriceCard price={price} priceChange={priceChangePercent} isLoading={isLoading} />
+          <MemoizedCurrentPriceCard price={currentPrice} priceChange={priceChangePercent} isLoading={isLoading} />
         </div>
 
         <div>

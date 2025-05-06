@@ -1,7 +1,7 @@
 "use client"
 
 import { useContext } from "react"
-import { MarketDataContext } from "@/lib/market/market-data-provider"
+import { MarketDataContext } from "@/components/providers/market-data-provider"
 
 export function useMarketData() {
   const context = useContext(MarketDataContext)

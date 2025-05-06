@@ -1,40 +1,58 @@
-export function cn(...inputs: (string | undefined)[]) {
-  return inputs.filter(Boolean).join(" ")
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
 }
 
-export function deepEqual(obj1: any, obj2: any): boolean {
-  if (obj1 === obj2) return true;
-  
-  if (typeof obj1 !== 'object' || obj1 === null ||
-      typeof obj2 !== 'object' || obj2 === null) {
-    return false;
+export function formatPrice(price: number, compact = false): string {
+  if (compact) {
+    return new Intl.NumberFormat("en-US", {
+      style: "decimal",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      notation: "compact",
+    }).format(price)
   }
 
-  const keys1 = Object.keys(obj1);
-  const keys2 = Object.keys(obj2);
-
-  if (keys1.length !== keys2.length) return false;
-
-  for (const key of keys1) {
-    if (!keys2.includes(key)) return false;
-    if (!deepEqual(obj1[key], obj2[key])) return false;
-  }
-
-  return true;
-}
-
-export function formatPrice(price: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  return new Intl.NumberFormat("en-US", {
+    style: "decimal",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 6
-  }).format(price);
+    maximumFractionDigits: 2,
+  }).format(price)
 }
 
-export function formatValue(value: number, decimalPlaces = 2): string {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: decimalPlaces
-  }).format(value);
+export function formatValue(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    compactDisplay: "short",
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+export function formatTime(timestamp: number, includeSeconds = false): string {
+  const date = new Date(timestamp)
+
+  if (includeSeconds) {
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    })
+  }
+
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  })
+}
+
+export function formatPercentage(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "percent",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
 }

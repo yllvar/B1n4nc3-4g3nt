@@ -21,6 +21,21 @@ export interface Trade {
   isBuyerMaker: boolean
 }
 
+// Unified Kline interface to be used throughout the application
+export interface Kline {
+  openTime: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  closeTime: number
+  quoteVolume: number
+  trades: number
+  takerBuyBaseVolume: number
+  takerBuyQuoteVolume: number
+}
+
 export interface MarketTicker {
   symbol: string
   priceChange: number
@@ -104,39 +119,16 @@ export interface MarketDataService {
  */
 
 export interface StrategyParameters {
-  // EMA parameters
   shortEmaPeriod: number
   longEmaPeriod: number
   emaThreshold: number
-  
-  // VWAP parameters
   vwapPeriod: number
   vwapThreshold: number
-  
-  // Risk management
   takeProfitPercent: number
   stopLossPercent: number
   maxHoldingTimeMinutes: number
   maxTradesPerHour: number
   leverageMultiplier: number
-  
-  // RSI parameters
-  rsiPeriod?: number
-  rsiOverbought?: number
-  rsiOversold?: number
-  
-  // MACD parameters
-  macdFastPeriod?: number
-  macdSlowPeriod?: number
-  macdSignalPeriod?: number
-  
-  // Bollinger Bands
-  bollingerPeriod?: number
-  bollingerStdDev?: number
-  
-  // General strategy parameters
-  lookbackPeriod?: number
-  [key: string]: any // Allow additional dynamic parameters
 }
 
 export interface StrategySignal {

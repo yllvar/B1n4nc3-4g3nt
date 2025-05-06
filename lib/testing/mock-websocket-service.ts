@@ -251,7 +251,7 @@ export class MockWebSocketService extends EventEmitter {
       }
 
       // Simulate errors if enabled
-      if (this.options.simulateErrors && this.options.errorRate !== undefined && Math.random() < this.options.errorRate) {
+      if (this.options.simulateErrors && Math.random() < this.options.errorRate) {
         this.simulateError(`Mock error for stream: ${stream}`)
         return
       }

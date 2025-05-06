@@ -176,7 +176,7 @@ export class ErrorHandlingService {
     // Notify all listeners
     this.errorListeners.forEach((listener) => {
       try {
-        listener(errorObj, options || {})
+        listener(errorObj, options)
       } catch (listenerError) {
         console.error("Error in error listener:", listenerError)
       }

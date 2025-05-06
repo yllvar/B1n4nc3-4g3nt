@@ -3,7 +3,6 @@
  * Provides backward compatibility with the old WebSocket client interface
  */
 import { binanceConnectionManager } from "./websocket-connection-manager"
-import { unifiedWebSocketClient } from "./unified-websocket-client"
 
 // This adapter implements the old WebSocketClient interface
 // to make migration easier
@@ -47,22 +46,21 @@ export class LegacyWebSocketAdapter {
    * Close WebSocket connection
    */
   public close(): void {
-    binanceConnectionManager.disconnect("USER_INITIATED")
+    binanceConnectionManager.disconnect()
   }
 
   /**
    * Connect to the WebSocket server
    */
   public connect(): void {
-    // Use the unifiedWebSocketClient directly
-    unifiedWebSocketClient.connect("default")
+    binanceConnectionManager.connect()
   }
 
   /**
    * Disconnect from the WebSocket server
    */
   public disconnect(): void {
-    binanceConnectionManager.disconnect("USER_INITIATED")
+    binanceConnectionManager.disconnect()
   }
 }
 

@@ -108,69 +108,55 @@ export class ErrorHandlingService {
     this.errorListeners.push(listener)
   }
 
-  private isHandlingError = false
-
   public handleError(error: Error | AppError | string, options?: ErrorHandlerOptions): void {
-    // Prevent infinite error handling loops
-    if (this.isHandlingError) {
-      console.error('Error occurred while handling another error:', error)
+    // Create error details object
+    const errorDetails: ErrorDetails = this.createErrorDetails(error, options)
+
+    // Check circuit breaker before proceeding
+    if (this.shouldBlockError(errorDetails)) {
       return
     }
 
-    this.isHandlingError = true
+    // Log to console with appropriate level based on severity
+    this.logErrorToConsole(errorDetails)
 
-    try {
-      // Create error details object
-      const errorDetails: ErrorDetails = this.createErrorDetails(error, options)
+    // Store error
+    this.storeError(errorDetails)
 
-      // Check circuit breaker before proceeding
-      if (this.shouldBlockError(errorDetails)) {
-        return
-      }
-
-      // Log to console with appropriate level based on severity
-      this.logErrorToConsole(errorDetails)
-
-      // Store error
-      this.storeError(errorDetails)
-
-      // Show toast notification if requested
-      if (options?.showToast !== false) {
-        this.showErrorToast(errorDetails)
-      }
-
-      // For critical errors, we might want to do something more
-      if (errorDetails.severity === "critical") {
-        this.handleCriticalError(errorDetails)
-      }
-
-      // Notify subscribers
-      this.notifySubscribers()
-
-      const errorObj =
-        typeof error === "string"
-          ? new AppError(error, {
-              code: options?.code,
-              severity: options?.severity,
-              context: options?.context,
-              recoverable: options?.recoverable,
-            })
-          : error
-
-      // Log the error
-      console.error("Error handled:", errorObj, options)
-
-      // Notify all listeners
-      this.errorListeners.forEach((listener) => {
-        try {
-          listener(errorObj, options || {})
-        } catch (listenerError) {
-          console.error("Error in error listener:", listenerError)
-        }
-      })
-    } finally {
-      this.isHandlingError = false
+    // Show toast notification if requested
+    if (options?.showToast !== false) {
+      this.showErrorToast(errorDetails)
     }
+
+    // For critical errors, we might want to do something more
+    if (errorDetails.severity === "critical") {
+      this.handleCriticalError(errorDetails)
+    }
+
+    // Notify subscribers
+    this.notifySubscribers()
+
+    const errorObj =
+      typeof error === "string"
+        ? new AppError(error, {
+            code: options?.code,
+            severity: options?.severity,
+            context: options?.context,
+            recoverable: options?.recoverable,
+          })
+        : error
+
+    // Log the error
+    console.error("Error handled:", errorObj, options)
+
+    // Notify all listeners
+    this.errorListeners.forEach((listener) => {
+      try {
+        listener(errorObj, options)
+      } catch (listenerError) {
+        console.error("Error in error listener:", listenerError)
+      }
+    })
   }
 
   private createErrorDetails(error: Error | AppError | string, options?: ErrorHandlerOptions): ErrorDetails {

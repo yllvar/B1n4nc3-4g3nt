@@ -21,11 +21,9 @@ export class BinanceMarketDataService {
 
       if (!response.ok) {
         throw new ApiError(`Failed to fetch 24hr ticker: ${response.statusText}`, {
-          context: { 
-            symbol,
-            statusCode: response.status,
-            endpoint: `/fapi/v1/ticker/24hr?symbol=${symbol.toUpperCase()}`
-          },
+          statusCode: response.status,
+          endpoint: `/fapi/v1/ticker/24hr?symbol=${symbol.toUpperCase()}`,
+          context: { symbol },
         })
       }
 
@@ -53,10 +51,8 @@ export class BinanceMarketDataService {
         throw error
       }
       throw new NetworkError(`Error fetching 24hr ticker: ${error instanceof Error ? error.message : String(error)}`, {
-        context: { 
-          symbol,
-          cause: error instanceof Error ? error : undefined
-        },
+        context: { symbol },
+        cause: error instanceof Error ? error : undefined,
       })
     }
   }
@@ -72,13 +68,9 @@ export class BinanceMarketDataService {
 
       if (!response.ok) {
         throw new ApiError(`Failed to fetch klines: ${response.statusText}`, {
-          context: { 
-            symbol,
-            interval, 
-            limit,
-            statusCode: response.status,
-            endpoint: `/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=${limit}`
-          },
+          statusCode: response.status,
+          endpoint: `/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=${limit}`,
+          context: { symbol, interval, limit },
         })
       }
 
@@ -87,14 +79,14 @@ export class BinanceMarketDataService {
       // Validate data structure
       if (!Array.isArray(data)) {
         throw new ValidationError("Invalid kline data: expected array", {
-          context: { invalidData: data },
+          invalidData: data,
         })
       }
 
       return data.map((kline: any[]) => {
         if (!Array.isArray(kline) || kline.length < 11) {
           throw new ValidationError("Invalid kline entry format", {
-            context: { invalidData: kline },
+            invalidData: kline,
           })
         }
 
@@ -106,11 +98,10 @@ export class BinanceMarketDataService {
           close: Number.parseFloat(kline[4]),
           volume: Number.parseFloat(kline[5]),
           closeTime: kline[6],
-          quoteAssetVolume: Number.parseFloat(kline[7]),
+          quoteVolume: Number.parseFloat(kline[7]),
           trades: kline[8],
-          takerBuyBaseAssetVolume: Number.parseFloat(kline[9]),
-          takerBuyQuoteAssetVolume: Number.parseFloat(kline[10]),
-          ignored: kline[11] || 0,
+          takerBuyBaseVolume: Number.parseFloat(kline[9]),
+          takerBuyQuoteVolume: Number.parseFloat(kline[10]),
         }
       })
     } catch (error) {
@@ -118,12 +109,8 @@ export class BinanceMarketDataService {
         throw error
       }
       throw new NetworkError(`Error fetching klines: ${error instanceof Error ? error.message : String(error)}`, {
-        context: { 
-          symbol, 
-          interval, 
-          limit,
-          cause: error instanceof Error ? error : undefined
-        },
+        context: { symbol, interval, limit },
+        cause: error instanceof Error ? error : undefined,
       })
     }
   }
@@ -137,12 +124,9 @@ export class BinanceMarketDataService {
 
       if (!response.ok) {
         throw new ApiError(`Failed to fetch order book: ${response.statusText}`, {
-          context: { 
-            symbol,
-            limit,
-            statusCode: response.status,
-            endpoint: `/fapi/v1/depth?symbol=${symbol.toUpperCase()}&limit=${limit}`
-          },
+          statusCode: response.status,
+          endpoint: `/fapi/v1/depth?symbol=${symbol.toUpperCase()}&limit=${limit}`,
+          context: { symbol, limit },
         })
       }
 
@@ -151,7 +135,7 @@ export class BinanceMarketDataService {
       // Validate data structure
       if (!data.bids || !data.asks || !Array.isArray(data.bids) || !Array.isArray(data.asks)) {
         throw new ValidationError("Invalid order book data structure", {
-          context: { invalidData: data },
+          invalidData: data,
         })
       }
 
@@ -170,11 +154,8 @@ export class BinanceMarketDataService {
         throw error
       }
       throw new NetworkError(`Error fetching order book: ${error instanceof Error ? error.message : String(error)}`, {
-        context: { 
-          symbol, 
-          limit,
-          cause: error instanceof Error ? error : undefined
-        },
+        context: { symbol, limit },
+        cause: error instanceof Error ? error : undefined,
       })
     }
   }
@@ -188,12 +169,9 @@ export class BinanceMarketDataService {
 
       if (!response.ok) {
         throw new ApiError(`Failed to fetch recent trades: ${response.statusText}`, {
-          context: { 
-            symbol, 
-            limit, 
-            statusCode: response.status,
-            endpoint: `/fapi/v1/trades?symbol=${symbol.toUpperCase()}&limit=${limit}`
-          },
+          statusCode: response.status,
+          endpoint: `/fapi/v1/trades?symbol=${symbol.toUpperCase()}&limit=${limit}`,
+          context: { symbol, limit },
         })
       }
 
@@ -202,14 +180,14 @@ export class BinanceMarketDataService {
       // Validate data structure
       if (!Array.isArray(data)) {
         throw new ValidationError("Invalid trades data: expected array", {
-          context: { invalidData: data },
+          invalidData: data,
         })
       }
 
       return data.map((trade: any) => {
         if (!trade.id || !trade.price || !trade.qty || !trade.time) {
           throw new ValidationError("Invalid trade entry format", {
-            context: { invalidData: trade },
+            invalidData: trade,
           })
         }
 
@@ -228,11 +206,8 @@ export class BinanceMarketDataService {
       throw new NetworkError(
         `Error fetching recent trades: ${error instanceof Error ? error.message : String(error)}`,
         {
-          context: { 
-            symbol, 
-            limit,
-            cause: error instanceof Error ? error : undefined
-          },
+          context: { symbol, limit },
+          cause: error instanceof Error ? error : undefined,
         },
       )
     }

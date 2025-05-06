@@ -16,10 +16,6 @@ export function parseKlineData(kline: Kline): ParsedKline {
     trades: kline.trades,
     takerBuyBaseAssetVolume: Number.parseFloat(kline.takerBuyBaseAssetVolume),
     takerBuyQuoteAssetVolume: Number.parseFloat(kline.takerBuyQuoteAssetVolume),
-    quoteVolume: Number.parseFloat(kline.quoteAssetVolume), // Same as quoteAssetVolume
-    takerBuyBaseVolume: Number.parseFloat(kline.takerBuyBaseAssetVolume), // Same as takerBuyBaseAssetVolume
-    takerBuyQuoteVolume: Number.parseFloat(kline.takerBuyQuoteAssetVolume), // Same as takerBuyQuoteAssetVolume
-    ignored: kline.ignored ? Number.parseFloat(kline.ignored) : 0,
   }
 }
 

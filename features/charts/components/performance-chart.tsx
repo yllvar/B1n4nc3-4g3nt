@@ -80,7 +80,7 @@ export function PerformanceChart({ data, type, isLoading = false, height = 200, 
   return (
     <ResponsiveChart
       data={data}
-      config={chartConfig as any}
+      config={chartConfig}
       height={height}
       loading={isLoading || !data.length}
       className={className}

@@ -1,17 +1,12 @@
 "use client"
 
-import React, { useState } from "react"
+import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { MarketDataProvider } from "@/features/market/providers/market-data-provider"
 import CurrentPriceCard from "@/features/market/components/current-price-card"
 import MarketStats from "@/features/market/components/market-stats"
-import TechIndicators from "@/features/market/components/technical-indicators"
-
-interface TechIndicatorsProps {
-  symbol: string;
-  interval: string;
-}
+import TechnicalIndicators from "@/features/market/components/technical-indicators"
 import { WebSocketConnectionStatus } from "@/components/websocket/connection-status"
 import { useMarketData } from "@/features/market/hooks/use-market-data"
 import { useKlineData } from "@/features/market/hooks/use-kline-data"
@@ -39,18 +34,8 @@ interface MarketContentProps {
 }
 
 function MarketContent({ symbol }: MarketContentProps) {
-  const { price: currentPrice, ticker, isLoading, error } = useMarketData({ symbol })
-  const priceChangePercent = ticker?.priceChangePercent || null
-  const highPrice = ticker?.highPrice || null
-  const lowPrice = ticker?.lowPrice || null
-  const volume = ticker?.volume || null
-  const { klineData: rawKlineData, isLoading: isLoadingKlines } = useKlineData({ symbol, interval: "1m", limit: 30 })
-  const klineData = rawKlineData?.map(k => ({
-    ...k,
-    quoteVolume: 0,
-    takerBuyBaseVolume: 0,
-    takerBuyQuoteVolume: 0
-  })) || []
+  const { currentPrice, priceChangePercent, highPrice, lowPrice, volume, isLoading, error } = useMarketData()
+  const { klineData, isLoading: isLoadingKlines } = useKlineData({ interval: "1m", limit: 30 })
 
   if (error) {
     return (
@@ -99,7 +84,7 @@ function MarketContent({ symbol }: MarketContentProps) {
             <CardDescription>Key indicators and signals</CardDescription>
           </CardHeader>
           <CardContent>
-            {React.createElement(TechIndicators as React.FC<TechIndicatorsProps>, { symbol, interval: "1h" })}
+            <TechnicalIndicators symbol={symbol} interval="1h" />
           </CardContent>
         </Card>
       </div>

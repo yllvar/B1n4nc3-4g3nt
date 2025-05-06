@@ -32,10 +32,6 @@ export interface ParsedKline {
   trades: number
   takerBuyBaseAssetVolume: number
   takerBuyQuoteAssetVolume: number
-  quoteVolume: number
-  takerBuyBaseVolume: number
-  takerBuyQuoteVolume: number
-  ignored?: number
 }
 
 // Trading signal type

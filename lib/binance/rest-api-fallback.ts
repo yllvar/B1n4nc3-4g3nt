@@ -3,8 +3,7 @@
  * Used when WebSocket connections fail
  */
 
-import type { OrderBookEntry, Trade, MarketTicker } from "./market-data-service"
-import type { Kline } from "../market/interfaces"
+import type { OrderBookEntry, Trade, MarketTicker, KlineData } from "./market-data-service"
 
 export class BinanceRestApiFallback {
   private baseApiUrl: string
@@ -241,7 +240,7 @@ export class BinanceRestApiFallback {
   /**
    * Get kline/candlestick data
    */
-  public async getKlines(symbol: string, interval: string, limit = 500): Promise<Kline[]> {
+  public async getKlines(symbol: string, interval: string, limit = 500): Promise<KlineData[]> {
     try {
       // Ensure symbol is properly formatted
       const formattedSymbol = this.formatSymbol(symbol)

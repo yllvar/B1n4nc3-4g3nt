@@ -6,7 +6,7 @@ import { ErrorMessage } from "@/components/error/error-message"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { errorHandler } from "@/lib/error-handling"
-import { useAsyncOperation } from "@/hooks/use-async-operation"
+import { useErrorHandling } from "@/hooks/use-error-handling"
 
 // A component that will throw an error
 function BuggyComponent() {
@@ -43,8 +43,8 @@ const simulateApiCall = async (shouldFail: boolean) => {
 export default function ErrorHandlingDebugPage() {
   const [showNetworkError, setShowNetworkError] = useState(false)
 
-  // Use our async operation hook for error handling
-  const { execute, isLoading, isError, error, retry } = useAsyncOperation(simulateApiCall, {
+  // Use our error handling hook
+  const { execute, isLoading, isError, error, retry } = useErrorHandling(simulateApiCall, {
     context: "debug-page",
     autoRetry: false,
   })
@@ -72,11 +72,7 @@ export default function ErrorHandlingDebugPage() {
             <CardDescription>Error boundaries catch errors in their child component tree</CardDescription>
           </CardHeader>
           <CardContent>
-            <ErrorBoundary onError={(error, errorInfo) => errorHandler.handleError(error, {
-              context: { section: "demo-error-boundary", componentStack: errorInfo.componentStack },
-              severity: "high",
-              code: "REACT_ERROR",
-            })}>
+            <ErrorBoundary section="demo-error-boundary">
               <BuggyComponent />
             </ErrorBoundary>
           </CardContent>

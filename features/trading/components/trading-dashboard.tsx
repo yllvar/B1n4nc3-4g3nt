@@ -5,16 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useMarketData } from "@/features/market/hooks/use-market-data"
 import StrategyVisualization from "./strategy-visualization"
-import { useTradingSignal } from "@/hooks/use-trading-signal"
-import { tradingSignalManager } from "@/lib/state/trading-signal-manager"
-import type { StrategyParameters } from "@/lib/types/market-types"
-import type { StrategyParameters as NewStrategyParameters } from "@/lib/types/market-types"
+import { useTechnicalAnalysis } from "@/hooks/use-technical-analysis"
+import type { StrategyParameters as NewStrategyParameters } from "@/lib/market/interfaces"
 
 interface TradingDashboardProps {
   symbol: string
 }
 
-export default function TradingDashboard({ symbol }: TradingDashboardProps) {
+export default function TradingDashboard() {
+  const { symbol } = useMarketData()
   const [interval, setInterval] = useState("5m")
   const [strategyParams, setStrategyParams] = useState<Partial<NewStrategyParameters>>({
     shortEmaPeriod: 9,
@@ -24,14 +23,18 @@ export default function TradingDashboard({ symbol }: TradingDashboardProps) {
     stopLossPercent: 0.005,
   })
 
-  const { signal, isLoading, error, refresh } = useTradingSignal({
-    symbol,
+  const { signals, klineData, isLoading, error, strategy } = useTechnicalAnalysis({
     interval,
-    strategyParams
+    limit: 100,
+    strategyParams,
   })
 
   const handleRefresh = () => {
-    refresh()
+    // Force refresh by changing a parameter slightly
+    setStrategyParams((prev) => ({
+      ...prev,
+      vwapPeriod: (prev.vwapPeriod || 20) + 0.001,
+    }))
   }
 
   return (
@@ -48,20 +51,20 @@ export default function TradingDashboard({ symbol }: TradingDashboardProps) {
         </Tabs>
       </div>
 
-      <div className="space-y-4">
-        {error ? (
-          <Card>
-            <CardContent className="p-6">
-              <div className="text-red-500">Error: {error}</div>
-            </CardContent>
-          </Card>
-        ) : (
-          <StrategyVisualization
-            signal={signal || undefined}
-            isLoading={isLoading}
-          />
-        )}
-      </div>
+      {error ? (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-red-500">Error: {error.message}</div>
+          </CardContent>
+        </Card>
+      ) : (
+        <StrategyVisualization
+          klineData={klineData}
+          signals={signals}
+          isLoading={isLoading}
+          onRefresh={handleRefresh}
+        />
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
@@ -88,6 +91,29 @@ export default function TradingDashboard({ symbol }: TradingDashboardProps) {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Position</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {strategy.getActivePosition() ? (
+              <div className="text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="font-medium">Type:</div>
+                  <div className={strategy.getActivePosition()?.type === "LONG" ? "text-green-500" : "text-red-500"}>
+                    {strategy.getActivePosition()?.type}
+                  </div>
+                  <div className="font-medium">Entry Price:</div>
+                  <div>{strategy.getActivePosition()?.entryPrice}</div>
+                  <div className="font-medium">Entry Time:</div>
+                  <div>{new Date(strategy.getActivePosition()?.entryTime || 0).toLocaleString()}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-muted-foreground">No active position</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

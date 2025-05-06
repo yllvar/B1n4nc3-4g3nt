@@ -52,7 +52,7 @@ export default function MonitoringDashboard() {
           {activeStreams.map((stream) => (
             <TabsContent key={stream} value={stream}>
               <div className="space-y-6">
-                <WebSocketStatus />
+                <WebSocketStatus streamName={stream} />
                 <PerformanceMetrics streamName={stream} />
               </div>
             </TabsContent>

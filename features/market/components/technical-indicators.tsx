@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useTechnicalIndicators } from "@/features/market/hooks/use-technical-indicators"
 import { Card } from "@/components/ui/card"
 import { useMediaQuery } from "@/hooks/use-media-query"
-import { memo, useMemo } from "react"
+import { memo } from "react"
 
 interface TechnicalIndicatorsProps {
   symbol: string
@@ -12,11 +12,11 @@ interface TechnicalIndicatorsProps {
 }
 
 function TechnicalIndicatorsComponent({ symbol, interval = "15m" }: TechnicalIndicatorsProps) {
-  const { indicators, isLoading, error, refresh } = useTechnicalIndicators(symbol, { interval })
-  const { rsi, ema20, sma50, macd, macdSignal } = useMemo(() => indicators, [indicators])
+  const { indicators, isLoading, error } = useTechnicalIndicators(symbol, { interval })
+  const { rsi, ema20, sma50, macd, macdSignal } = indicators
   const isMobile = useMediaQuery("(max-width: 640px)")
 
-  if (isLoading || (rsi === null && ema20 === null && sma50 === null && macd === null)) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-6 w-40" />
@@ -74,16 +74,7 @@ function TechnicalIndicatorsComponent({ symbol, interval = "15m" }: TechnicalInd
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        {!isMobile && <h2 className="text-xl font-semibold">Technical Indicators</h2>}
-        <button
-          onClick={refresh}
-          className="text-sm text-primary hover:text-primary/80 transition-colors"
-          disabled={isLoading}
-        >
-          {isLoading ? 'Refreshing...' : 'Refresh'}
-        </button>
-      </div>
+      {!isMobile && <h2 className="text-xl font-semibold">Technical Indicators</h2>}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <Card className="p-3 sm:p-4">
           <p className="text-xs sm:text-sm text-muted-foreground">RSI (14)</p>

@@ -1,18 +1,17 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useErrorBoundary } from "react-error-boundary"
-import { BinanceMarketDataProvider, type MarketDataResult } from "@/lib/market/market-data-provider"
+import { binanceMarketDataProvider } from "@/lib/market/market-data-provider"
 import { errorHandler, retry } from "@/lib/error-handling"
 import type { MarketTicker } from "@/lib/market/interfaces"
 
 interface UseMarketDataOptions {
-  symbol: string
+  initialSymbol?: string
   autoConnect?: boolean
 }
 
-export function useMarketData({ symbol, autoConnect = true }: UseMarketDataOptions) {
-  const { showBoundary } = useErrorBoundary()
+export function useMarketData({ initialSymbol = "BTCUSDT", autoConnect = true }: UseMarketDataOptions = {}) {
+  const [symbol, setSymbol] = useState(initialSymbol)
   const [price, setPrice] = useState<number | null>(null)
   const [ticker, setTicker] = useState<MarketTicker | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -20,50 +19,40 @@ export function useMarketData({ symbol, autoConnect = true }: UseMarketDataOptio
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected")
 
   // Fetch initial price and ticker data
-  const fetchInitialData = useCallback(async (): Promise<void> => {
+  const fetchInitialData = useCallback(async () => {
     if (!symbol) return
 
-    const abortController = new AbortController()
     setIsLoading(true)
     setError(null)
 
     try {
-      const createAbortableOperation = <T,>(operation: () => Promise<T>) => {
-        return async () => {
-          if (abortController.signal.aborted) {
-            throw new DOMException('Aborted', 'AbortError')
-          }
-          return operation()
-        }
-      }
-
+      // Use retry mechanism for better reliability
       const [priceResult, tickerResult] = await Promise.all([
-        retry(createAbortableOperation(() => 
-          BinanceMarketDataProvider.getInstance().getCurrentPrice(symbol)
-        ), {
+        retry(() => binanceMarketDataProvider.getCurrentPrice(symbol), {
           maxRetries: 3,
           onRetry: (err, attempt) => {
             console.warn(`Retrying price fetch (${attempt}/3): ${err.message}`)
           },
-          retryCondition: (err) => !abortController.signal.aborted && !(err instanceof DOMException && err.name === 'AbortError')
         }),
-        retry(createAbortableOperation(() => 
-          BinanceMarketDataProvider.getInstance().get24hrTicker(symbol)
-        ), {
+        retry(() => binanceMarketDataProvider.get24hrTicker(symbol), {
           maxRetries: 3,
-          onRetry: (err: Error, attempt: number) => {
+          onRetry: (err, attempt) => {
             console.warn(`Retrying ticker fetch (${attempt}/3): ${err.message}`)
           },
-          retryCondition: (err: Error) => !abortController.signal.aborted && !(err instanceof DOMException && err.name === 'AbortError')
         }),
       ])
 
-      if (priceResult.data !== null) setPrice(priceResult.data)
-      if (tickerResult.data !== null) setTicker(tickerResult.data)
+      if (priceResult.data !== null) {
+        setPrice(priceResult.data)
+      }
+
+      if (tickerResult.data !== null) {
+        setTicker(tickerResult.data)
+      }
+
       setError(null)
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err))
-      showBoundary(error)
       setError(error)
 
       errorHandler.handleError(error, {
@@ -74,56 +63,58 @@ export function useMarketData({ symbol, autoConnect = true }: UseMarketDataOptio
         retryAction: fetchInitialData,
       })
     } finally {
-      if (!abortController.signal.aborted) {
-        setIsLoading(false)
-      }
+      setIsLoading(false)
     }
-  }, [symbol, showBoundary])
+  }, [symbol])
 
   // Subscribe to real-time updates
   const subscribeToUpdates = useCallback(() => {
     if (!symbol) return () => {}
-    let isActive = true
 
-    const handleError = (error: Error) => {
-      if (!isActive) return
-      showBoundary(error)
-      setError(error)
-      BinanceMarketDataProvider.getInstance().startFallbackPolling(symbol, (data: {price?: number, ticker?: MarketTicker}) => {
-        if (data.price) setPrice(data.price)
-        if (data.ticker) setTicker(data.ticker)
-      })
-    }
-
-    const unsubscribePrice = BinanceMarketDataProvider.getInstance().subscribeToPrice(symbol, (result: MarketDataResult<number>) => {
-      if (!isActive) return
+    // Subscribe to price updates
+    const unsubscribePrice = binanceMarketDataProvider.subscribeToPrice(symbol, (result) => {
       if (result.error) {
-        handleError(result.error)
+        errorHandler.handleError(result.error, {
+          code: "PRICE_SUBSCRIPTION_ERROR",
+          severity: "medium",
+          context: { symbol },
+          showToast: false,
+        })
         return
       }
-      if (result.data !== null) setPrice(result.data)
+
+      if (result.data !== null) {
+        setPrice(result.data)
+      }
     })
 
-    const unsubscribeTicker = BinanceMarketDataProvider.getInstance().subscribeTo24hrTicker(symbol, (result: MarketDataResult<MarketTicker>) => {
-      if (!isActive) return
+    // Subscribe to ticker updates
+    const unsubscribeTicker = binanceMarketDataProvider.subscribeTo24hrTicker(symbol, (result) => {
       if (result.error) {
-        handleError(result.error)
+        errorHandler.handleError(result.error, {
+          code: "TICKER_SUBSCRIPTION_ERROR",
+          severity: "medium",
+          context: { symbol },
+          showToast: false,
+        })
         return
       }
-      if (result.data !== null) setTicker(result.data)
+
+      if (result.data !== null) {
+        setTicker(result.data)
+      }
     })
 
+    // Return combined unsubscribe function
     return () => {
-      isActive = false
       unsubscribePrice()
       unsubscribeTicker()
-      BinanceMarketDataProvider.getInstance().stopFallbackPolling(symbol)
     }
-  }, [symbol, showBoundary])
+  }, [symbol])
 
   // Monitor connection status
   useEffect(() => {
-    const unsubscribe = BinanceMarketDataProvider.getInstance().subscribeToConnectionStatus((status: string) => {
+    const unsubscribe = binanceMarketDataProvider.subscribeToConnectionStatus((status) => {
       setConnectionStatus(status)
     })
 
@@ -134,15 +125,16 @@ export function useMarketData({ symbol, autoConnect = true }: UseMarketDataOptio
   useEffect(() => {
     if (!autoConnect) return
 
-    const abortController = new AbortController()
     fetchInitialData()
     const unsubscribe = subscribeToUpdates()
 
-    return () => {
-      abortController.abort()
-      unsubscribe()
-    }
+    return unsubscribe
   }, [symbol, autoConnect, fetchInitialData, subscribeToUpdates])
+
+  // Change symbol
+  const changeSymbol = useCallback((newSymbol: string) => {
+    setSymbol(newSymbol.toUpperCase())
+  }, [])
 
   return {
     symbol,
@@ -151,6 +143,7 @@ export function useMarketData({ symbol, autoConnect = true }: UseMarketDataOptio
     isLoading,
     error,
     connectionStatus,
+    changeSymbol,
     refreshData: fetchInitialData,
   }
 }

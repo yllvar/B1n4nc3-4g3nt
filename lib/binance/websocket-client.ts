@@ -27,18 +27,8 @@ export class BinanceWebSocketClient {
   private callbacks: Map<string, WebSocketCallback[]> = new Map()
   private isClosing = false
   private reconnectAttempts = 0
-  private maxReconnectAttempts = 8
-  private reconnectDelay = 1000 // Start with 1 second
-  private readonly reconnectStrategy = [
-    { attempt: 1, delay: 1000 },
-    { attempt: 2, delay: 1000 },
-    { attempt: 3, delay: 1000 },
-    { attempt: 4, delay: 5000 },
-    { attempt: 5, delay: 5000 },
-    { attempt: 6, delay: 10000 },
-    { attempt: 7, delay: 15000 },
-    { attempt: 8, delay: 30000 }
-  ]
+  private maxReconnectAttempts = 5
+  private reconnectDelay = 3000 // Start with 3 seconds
   private lastHeartbeatSentTime = 0
   private lastPongTime = 0
   private activeStreams: Set<string> = new Set()
@@ -178,8 +168,6 @@ export class BinanceWebSocketClient {
       try {
         const messageSize = event.data.length
         const data = JSON.parse(event.data)
-        this.messageCount++
-        this.updateMessageStats()
 
         // Handle ping/pong responses
         if (data.result !== undefined && data.id) {
@@ -377,11 +365,7 @@ export class BinanceWebSocketClient {
       clearTimeout(this.reconnectTimeout)
     }
 
-    // Get delay from strategy with 20% jitter
-    const strategy = this.reconnectStrategy[this.reconnectAttempts] || 
-      { delay: 30000 }
-    const jitter = strategy.delay * 0.2 * (Math.random() * 2 - 1)
-    const delay = Math.min(30000, strategy.delay + jitter)
+    const delay = Math.min(30000, this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts))
     console.log(`Attempting to reconnect in ${delay}ms...`)
 
     // Update connection status for all active streams
@@ -524,60 +508,36 @@ export class BinanceWebSocketClient {
    * Get the current connection health as a percentage (0-100)
    * Based on heartbeat responses and reconnection attempts
    */
-  private messageCount = 0
-  private lastMessageCount = 0
-  private messageRate = 0
-  private packetLossEstimate = 0
-
   public getConnectionHealth(): number {
     if (!this.isConnected()) {
       return 0
     }
 
-    // Base health on multiple factors
-    let health = 100
-
-    // 1. Heartbeat responsiveness (40% weight)
+    // If we've never received a pong, return a low health
     if (this.lastPongTime === 0) {
-      health -= 40
-    } else {
-      const timeSinceLastPong = Date.now() - this.lastPongTime
-      if (timeSinceLastPong > 30000) {
-        health -= Math.min(40, (timeSinceLastPong - 30000) / 1000)
-      }
+      return 20
     }
 
-    // 2. Message rate stability (30% weight)
-    if (this.messageRate < 0.5) {
-      health -= 30 * (1 - this.messageRate)
+    // Calculate health based on time since last pong
+    const timeSinceLastPong = Date.now() - this.lastPongTime
+
+    // If we've received a pong in the last 30 seconds, we're healthy
+    if (timeSinceLastPong < 30000) {
+      return 100
     }
 
-    // 3. Packet loss estimate (20% weight)
-    health -= 20 * this.packetLossEstimate
-
-    // 4. Recent reconnects (10% weight)
-    if (this.reconnectAttempts > 0) {
-      health -= Math.min(10, this.reconnectAttempts * 2)
+    // If it's been between 30-60 seconds, health decreases
+    if (timeSinceLastPong < 60000) {
+      return 75
     }
 
-    return Math.max(0, Math.round(health))
-  }
-
-  private updateMessageStats() {
-    const now = Date.now()
-    if (now - this.lastMessageCount > 10000) { // Every 10 seconds
-      this.messageRate = (this.messageCount - this.lastMessageCount) / 10
-      this.lastMessageCount = this.messageCount
-      
-      // Simple packet loss estimation (for demo purposes)
-      if (this.messageRate > 0) {
-        const expectedMessages = this.messageRate * 10
-        const actualMessages = this.messageCount - this.lastMessageCount
-        this.packetLossEstimate = Math.max(0, 
-          (expectedMessages - actualMessages) / expectedMessages
-        )
-      }
+    // If it's been between 1-2 minutes, health is poor
+    if (timeSinceLastPong < 120000) {
+      return 50
     }
+
+    // If it's been over 2 minutes, health is critical
+    return 25
   }
 }
 

@@ -2,8 +2,7 @@
  * Trading Service
  * Handles trade execution and order management
  */
-import type { Kline, ParsedKline, TradingSignal } from "../types/market-types"
-import type { StrategyParameters } from "../market/interfaces"
+import type { Kline, ParsedKline, TradingSignal, StrategyParameters } from "../types/market-types"
 import { parseKlineData, standardizeSignalFormat } from "../utils/type-adapters"
 import { AppError, StrategyError } from "../error-handling/error-types"
 import { calculateScalpingSignal } from "./scalping-strategy"
@@ -88,24 +87,8 @@ export class TradingService {
     this.symbol = symbol
     this.interval = interval
     this.strategyParams = {
-      // Required EMA parameters
-      shortEmaPeriod: 9,
-      longEmaPeriod: 21,
-      emaThreshold: 0.0005,
-      
-      // Required VWAP parameters
-      vwapPeriod: 20,
-      vwapThreshold: 0.0008,
-      
-      // Required risk management
-      takeProfitPercent: 0.005,
-      stopLossPercent: 0.003,
-      maxHoldingTimeMinutes: 5,
-      maxTradesPerHour: 6,
-      leverageMultiplier: 5,
-      
-      // Optional parameters
-      lookbackPeriod: 50,
+      symbol,
+      interval,
       rsiPeriod: 14,
       rsiOverbought: 70,
       rsiOversold: 30,
@@ -127,10 +110,10 @@ export class TradingService {
       }
 
       // Parse string values to numbers for calculations
-      const parsedKlines = klines.map(parseKlineData)
+      const parsedKlines: ParsedKline[] = klines.map(parseKlineData)
 
       // Generate signal using the scalping strategy
-      const signal = calculateScalpingSignal(parsedKlines as unknown as import("../market/interfaces").Kline[], this.strategyParams)
+      const signal = calculateScalpingSignal(parsedKlines, this.strategyParams)
 
       // Ensure the signal format is standardized for visualization components
       return standardizeSignalFormat(signal)
@@ -303,7 +286,7 @@ export class TradingService {
 
     // Calculate signals
     // const signals = this.strategy.calculateSignals(this.klineData, currentHigherTimeframeEma)
-    const signals: StrategySignal[] = []
+    const signals = []
 
     if (signals.length > 0) {
       // Get the latest signal
