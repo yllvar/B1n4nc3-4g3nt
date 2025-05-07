@@ -28,12 +28,26 @@ export function useKlineData({ interval = "1m", limit = 30 }: UseKlineDataOption
     const fetchKlineData = async () => {
       try {
         setIsLoading(true)
-        const result = await binanceMarketDataService.getKlines(symbol, interval, limit)
-
-        if (isMounted && result.data) {
-          setKlineData(result.data)
-          setIsLoading(false)
-          setError(null)
+        // Check if the method exists before calling it
+        if (typeof binanceMarketDataService.getKlines !== "function") {
+          // Fallback to the correct method name if available
+          if (typeof binanceMarketDataService.fetchKlines === "function") {
+            const result = await binanceMarketDataService.fetchKlines(symbol, interval, limit)
+            if (isMounted && result && result.data) {
+              setKlineData(result.data)
+              setIsLoading(false)
+              setError(null)
+            }
+          } else {
+            throw new Error("Kline data fetching method not available")
+          }
+        } else {
+          const result = await binanceMarketDataService.getKlines(symbol, interval, limit)
+          if (isMounted && result) {
+            setKlineData(Array.isArray(result) ? result : result.data || [])
+            setIsLoading(false)
+            setError(null)
+          }
         }
       } catch (err) {
         console.error("Error fetching kline data:", err)

@@ -10,7 +10,7 @@ import { ApiError, NetworkError, ValidationError } from "../error-handling"
 export type { Kline, OrderBookEntry, Trade, MarketTicker }
 
 export class BinanceMarketDataService {
-  private baseApiUrl = "https://fapi.binance.com"
+  private baseApiUrl = process.env.BINANCE_API_BASE_URL || "https://fapi.binance.com"
 
   /**
    * Fetch 24hr ticker statistics
@@ -60,7 +60,7 @@ export class BinanceMarketDataService {
   /**
    * Fetch kline/candlestick data
    */
-  public async getKlines(symbol: string, interval: string, limit = 500): Promise<Kline[]> {
+  public async getKlines(symbol: string, interval: string, limit = 500): Promise<{ data: Kline[] }> {
     try {
       const response = await fetch(
         `${this.baseApiUrl}/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=${limit}`,
@@ -83,7 +83,7 @@ export class BinanceMarketDataService {
         })
       }
 
-      return data.map((kline: any[]) => {
+      const klines = data.map((kline: any[]) => {
         if (!Array.isArray(kline) || kline.length < 11) {
           throw new ValidationError("Invalid kline entry format", {
             invalidData: kline,
@@ -104,6 +104,8 @@ export class BinanceMarketDataService {
           takerBuyQuoteVolume: Number.parseFloat(kline[10]),
         }
       })
+
+      return { data: klines }
     } catch (error) {
       if (error instanceof ApiError || error instanceof ValidationError) {
         throw error
@@ -113,6 +115,13 @@ export class BinanceMarketDataService {
         cause: error instanceof Error ? error : undefined,
       })
     }
+  }
+
+  /**
+   * Alias for getKlines for backward compatibility
+   */
+  public async fetchKlines(symbol: string, interval: string, limit = 500): Promise<{ data: Kline[] }> {
+    return this.getKlines(symbol, interval, limit)
   }
 
   /**

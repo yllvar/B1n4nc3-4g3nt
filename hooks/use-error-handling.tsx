@@ -3,6 +3,16 @@
 import { useState, useEffect } from "react"
 import { errorHandler, type ErrorDetails } from "@/lib/error-handling"
 
+// Simple network check that works in both browser and server environments
+const isNetworkOnline = () => {
+  // In browser environment, use navigator.onLine
+  if (typeof navigator !== "undefined" && navigator && typeof navigator.onLine === "boolean") {
+    return navigator.onLine
+  }
+  // In server environment, assume online
+  return true
+}
+
 interface UseErrorHandlingOptions {
   filterBySeverity?: ("low" | "medium" | "high" | "critical")[]
   filterByCode?: string[]
@@ -14,6 +24,7 @@ export function useErrorHandling(options: UseErrorHandlingOptions = {}) {
   const [errors, setErrors] = useState<ErrorDetails[]>([])
   const [hasErrors, setHasErrors] = useState(false)
   const [hasCriticalErrors, setHasCriticalErrors] = useState(false)
+  const [isOnline, setIsOnline] = useState(isNetworkOnline())
 
   useEffect(() => {
     // Subscribe to error updates
@@ -39,9 +50,22 @@ export function useErrorHandling(options: UseErrorHandlingOptions = {}) {
       setHasCriticalErrors(filteredErrors.some((e) => e.severity === "critical"))
     })
 
-    // Cleanup subscription
+    // Set up network status listeners
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline)
+      window.addEventListener("offline", handleOffline)
+    }
+
+    // Cleanup subscription and event listeners
     return () => {
       unsubscribe()
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline)
+        window.removeEventListener("offline", handleOffline)
+      }
     }
   }, [filterBySeverity, filterByCode, limit])
 
@@ -66,6 +90,6 @@ export function useErrorHandling(options: UseErrorHandlingOptions = {}) {
     clearErrors,
     retryRecoverableErrors,
     dismissError,
-    isNetworkOnline: errorHandler.isNetworkOnline(),
+    isNetworkOnline: isOnline,
   }
 }

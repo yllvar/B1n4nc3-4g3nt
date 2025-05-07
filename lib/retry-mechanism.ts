@@ -1,140 +1,130 @@
 /**
  * Retry mechanism for handling transient errors
  */
-import { NetworkError } from "./error-types"
-import { errorHandler } from "./error-handler"
-import { isNetworkOnline } from "./utils/network"
+
+// Simple network check that works in both browser and server environments
+const isNetworkOnline = () => {
+  // In browser environment, use navigator.onLine
+  if (typeof navigator !== "undefined" && navigator && typeof navigator.onLine === "boolean") {
+    return navigator.onLine
+  }
+  // In server environment, assume online
+  return true
+}
 
 export interface RetryOptions {
   maxRetries?: number
   initialDelay?: number
   maxDelay?: number
-  backoffFactor?: number
-  retryableStatusCodes?: number[]
-  retryableErrors?: string[]
+  factor?: number
+  jitter?: boolean
   onRetry?: (error: Error, attempt: number) => void
+  retryCondition?: (error: Error) => boolean
   requireNetwork?: boolean
 }
 
-const defaultRetryOptions: RetryOptions = {
-  maxRetries: 3,
-  initialDelay: 300,
-  maxDelay: 5000,
-  backoffFactor: 2,
-  retryableStatusCodes: [408, 429, 500, 502, 503, 504],
-  retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
-  onRetry: undefined,
-  requireNetwork: true,
-}
-
 /**
- * Generic retry function for any async operation
- * @param operation Function to retry
+ * Retry a function with exponential backoff
+ * @param fn Function to retry
  * @param options Retry options
- * @returns Result of the operation
+ * @returns Promise that resolves with the function result or rejects after max retries
  */
-export async function retry<T>(operation: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const opts = { ...defaultRetryOptions, ...options }
-  let lastError: Error | null = null
+export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
+  const {
+    maxRetries = 3,
+    initialDelay = 1000,
+    maxDelay = 30000,
+    factor = 2,
+    jitter = true,
+    onRetry,
+    retryCondition = () => true,
+    requireNetwork = true,
+  } = options
+
   let attempt = 0
 
-  while (attempt <= opts.maxRetries!) {
+  async function attempt_retry(): Promise<T> {
     try {
       // Check network status if required
-      if (opts.requireNetwork && !isNetworkOnline()) {
-        throw new NetworkError("Network is offline", {
-          code: "NETWORK_OFFLINE",
-          recoverable: true,
-        })
+      if (requireNetwork && !isNetworkOnline()) {
+        throw new Error("Network is offline")
       }
 
-      return await operation()
+      return await fn()
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error))
+      attempt++
 
-      // Check if we should retry based on the error
-      const shouldRetry =
-        attempt < opts.maxRetries! &&
-        // For HTTP errors
-        ((lastError instanceof NetworkError &&
-          lastError.context.status &&
-          opts.retryableStatusCodes!.includes(lastError.context.status)) ||
-          // For network errors
-          opts.retryableErrors!.some((code) => lastError!.message.includes(code)))
-
-      if (!shouldRetry) {
-        throw lastError
+      // If we've reached max retries or the error doesn't meet retry condition, throw
+      if (attempt >= maxRetries || !(error instanceof Error) || !retryCondition(error)) {
+        throw error
       }
 
       // Calculate delay with exponential backoff
-      const delay = Math.min(opts.initialDelay! * Math.pow(opts.backoffFactor!, attempt), opts.maxDelay!)
+      let delay = Math.min(initialDelay * Math.pow(factor, attempt - 1), maxDelay)
 
-      // Call onRetry callback if provided
-      if (opts.onRetry) {
-        opts.onRetry(lastError, attempt + 1)
+      // Add jitter if enabled (helps prevent thundering herd problem)
+      if (jitter) {
+        delay = Math.random() * delay * 0.3 + delay * 0.7
       }
 
-      // Wait before retrying
+      // Call onRetry callback if provided
+      if (onRetry && error instanceof Error) {
+        onRetry(error, attempt)
+      }
+
+      // Wait and retry
       await new Promise((resolve) => setTimeout(resolve, delay))
-      attempt++
+      return attempt_retry()
     }
   }
 
-  // If we get here, we've exhausted all retries
-  throw lastError
+  return attempt_retry()
 }
 
 /**
- * Retry fetch with exponential backoff
- * @param url URL to fetch
- * @param options Fetch options
- * @param retryOptions Retry options
- * @returns Fetch response
+ * Retry a fetch request with exponential backoff
+ * @param input Request info
+ * @param init Request init
+ * @param options Retry options
+ * @returns Promise that resolves with the fetch response
  */
 export async function retryFetch(
-  url: string,
-  options: RequestInit = {},
-  retryOptions: RetryOptions = {},
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  options: RetryOptions = {},
 ): Promise<Response> {
-  return retry(async () => {
-    try {
-      const response = await fetch(url, options)
+  return retry(
+    async () => {
+      const response = await fetch(input, init)
 
-      // Check if response is ok
+      // Throw for non-2xx responses
       if (!response.ok) {
-        const error = new NetworkError(`HTTP error ${response.status}: ${response.statusText}`, {
-          context: {
-            url,
-            status: response.status,
-            statusText: response.statusText,
-            method: options.method || "GET",
-          },
-          recoverable: retryOptions.retryableStatusCodes?.includes(response.status) ?? false,
+        const error = new Error(`HTTP error ${response.status}: ${response.statusText}`)
+        // Add response details to the error
+        Object.defineProperty(error, "response", {
+          value: response,
+          enumerable: false,
         })
-
-        // Log the error but don't throw if we're going to retry
-        if (retryOptions.retryableStatusCodes?.includes(response.status)) {
-          errorHandler.logError(error)
-        } else {
-          throw error
-        }
+        throw error
       }
 
       return response
-    } catch (error) {
-      // Convert fetch errors to NetworkError
-      if (!(error instanceof NetworkError)) {
-        throw new NetworkError(error instanceof Error ? error.message : String(error), {
-          context: {
-            url,
-            method: options.method || "GET",
-            originalError: error,
-          },
-        })
-      }
-      throw error
-    }
-  }, retryOptions)
+    },
+    {
+      // Default retry condition for fetch: retry on network errors and 5xx responses
+      retryCondition: (error) => {
+        // Retry on network errors
+        if (error.message.includes("fetch failed") || error.message.includes("network")) {
+          return true
+        }
+
+        // Retry on 5xx errors (server errors)
+        const response = (error as any).response
+        return response && response.status >= 500 && response.status < 600
+      },
+      ...options,
+    },
+  )
 }
 
 /**
@@ -154,12 +144,7 @@ export async function retryWithTimeout<T>(
       fn(),
       new Promise<never>((_, reject) => {
         setTimeout(() => {
-          reject(
-            new NetworkError(`Operation timed out after ${timeout}ms`, {
-              context: { timeout },
-              recoverable: true,
-            }),
-          )
+          reject(new Error(`Operation timed out after ${timeout}ms`))
         }, timeout)
       }),
     ])

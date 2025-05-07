@@ -1,8 +1,7 @@
 /**
  * Error handler for centralized error management
  */
-import { AppError, type ErrorOptions } from "./error-types"
-import { isNetworkOnline } from "./utils/network"
+import { AppError, type ErrorDetails, type ErrorOptions } from "./error-types"
 
 export interface ErrorHandlerOptions {
   logToConsole?: boolean
@@ -14,8 +13,9 @@ export interface ErrorHandlerOptions {
 
 class ErrorHandler {
   private options: ErrorHandlerOptions
-  private errorLog: AppError[] = []
+  private errorLog: ErrorDetails[] = []
   private maxLogSize = 100
+  private subscribers: Set<(errors: ErrorDetails[]) => void> = new Set()
 
   constructor(options: ErrorHandlerOptions = {}) {
     this.options = {
@@ -40,8 +40,8 @@ class ErrorHandler {
     // Log the error
     this.logError(appError)
 
-    // Report to server if enabled and network is available
-    if (this.options.logToServer && isNetworkOnline()) {
+    // Report to server if enabled
+    if (this.options.logToServer) {
       this.reportToServer(appError)
     }
 
@@ -62,6 +62,9 @@ class ErrorHandler {
     if (this.options.logToConsole) {
       this.logToConsole(appError)
     }
+
+    // Notify subscribers
+    this.notifySubscribers()
   }
 
   /**
@@ -69,15 +72,57 @@ class ErrorHandler {
    * @param count Number of errors to retrieve
    * @returns Array of recent errors
    */
-  public getRecentErrors(count = 10): AppError[] {
+  public getRecentErrors(count = 10): ErrorDetails[] {
     return this.errorLog.slice(0, count)
   }
 
   /**
    * Clear the error log
    */
-  public clearErrorLog(): void {
+  public clearErrors(): void {
     this.errorLog = []
+    this.notifySubscribers()
+  }
+
+  /**
+   * Update the errors in the log
+   * @param errors New errors array
+   */
+  public updateErrors(errors: ErrorDetails[]): void {
+    this.errorLog = errors
+    this.notifySubscribers()
+  }
+
+  /**
+   * Retry all recoverable errors
+   */
+  public async retryRecoverableErrors(): Promise<void> {
+    const promises: Promise<void>[] = []
+
+    for (const error of this.errorLog) {
+      if (error.recoverable && error.retryAction) {
+        promises.push(error.retryAction())
+      }
+    }
+
+    await Promise.allSettled(promises)
+  }
+
+  /**
+   * Subscribe to error updates
+   * @param callback Function to call when errors change
+   * @returns Unsubscribe function
+   */
+  public subscribe(callback: (errors: ErrorDetails[]) => void): () => void {
+    this.subscribers.add(callback)
+
+    // Immediately call with current errors
+    callback([...this.errorLog])
+
+    // Return unsubscribe function
+    return () => {
+      this.subscribers.delete(callback)
+    }
   }
 
   /**
@@ -86,13 +131,6 @@ class ErrorHandler {
    */
   public setOptions(options: Partial<ErrorHandlerOptions>): void {
     this.options = { ...this.options, ...options }
-  }
-
-  /**
-   * Clean up any resources used by the error handler
-   */
-  public cleanup(): void {
-    // Nothing to clean up for now
   }
 
   /**
@@ -143,12 +181,36 @@ class ErrorHandler {
    * @param error Error to add
    */
   private addToErrorLog(error: AppError): void {
-    this.errorLog.unshift(error)
+    const errorDetails: ErrorDetails = {
+      message: error.message,
+      code: error.code,
+      severity: error.severity,
+      timestamp: error.timestamp,
+      context: error.context,
+      recoverable: error.recoverable,
+      retryAction: error.retryAction,
+    }
+
+    this.errorLog.unshift(errorDetails)
 
     // Trim log if it exceeds max size
     if (this.errorLog.length > this.maxLogSize) {
       this.errorLog = this.errorLog.slice(0, this.maxLogSize)
     }
+  }
+
+  /**
+   * Notify all subscribers of error changes
+   */
+  private notifySubscribers(): void {
+    const errorsCopy = [...this.errorLog]
+    this.subscribers.forEach((callback) => {
+      try {
+        callback(errorsCopy)
+      } catch (error) {
+        console.error("Error in error subscriber:", error)
+      }
+    })
   }
 
   /**
