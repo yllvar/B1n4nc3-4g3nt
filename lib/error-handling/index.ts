@@ -3,14 +3,46 @@
  * Provides a centralized error handling system for the application
  */
 
-// Re-export all error types
-export * from "./error-types"
+// Import and re-export from the main error handling file
+import {
+  AppError,
+  ApiError,
+  NetworkError,
+  ValidationError,
+  WebSocketError,
+  AuthError,
+  ConfigError,
+  DataError,
+  StrategyError,
+  OrderExecutionError,
+  errorHandler,
+  retry,
+  retryFetch,
+  retryWithTimeout,
+  safeJsonParse,
+  makeSafe,
+  safeGet,
+} from "../error-handling"
 
-// Re-export error handler
-export * from "./error-handler"
-
-// Re-export retry mechanism
-export * from "./retry-mechanism"
+export {
+  AppError,
+  ApiError,
+  NetworkError,
+  ValidationError,
+  WebSocketError,
+  AuthError,
+  ConfigError,
+  DataError,
+  StrategyError,
+  OrderExecutionError,
+  errorHandler,
+  retry,
+  retryFetch,
+  retryWithTimeout,
+  safeJsonParse,
+  makeSafe,
+  safeGet,
+}
 
 // Utility function for handling API errors
 export function handleApiError(
@@ -23,16 +55,13 @@ export function handleApiError(
   } = {},
 ): void {
   const { showToast = true, severity = "medium", retryAction } = options
-  const { errorHandler } = require("./error-handler")
 
   const message = error instanceof Error ? error.message : String(error)
 
   errorHandler.handleError(message, {
     context: { source: context },
-    showToast,
-    severity,
+    severity: severity,
     recoverable: !!retryAction,
-    retryAction,
   })
 }
 
@@ -47,16 +76,13 @@ export function handleWebSocketError(
   } = {},
 ): void {
   const { showToast = true, severity = "high", reconnectAction } = options
-  const { errorHandler } = require("./error-handler")
 
   const message = error instanceof Error ? error.message : String(error)
 
   errorHandler.handleError(message, {
     context: { source: context },
-    showToast,
-    severity,
+    severity: severity,
     recoverable: !!reconnectAction,
-    retryAction: reconnectAction,
     code: "WEBSOCKET_ERROR",
   })
 }
@@ -72,14 +98,12 @@ export function handleDataError(
   } = {},
 ): void {
   const { showToast = false, severity = "medium", data } = options
-  const { errorHandler } = require("./error-handler")
 
   const message = error instanceof Error ? error.message : String(error)
 
   errorHandler.handleError(message, {
     context: { source: context, data },
-    showToast,
-    severity,
+    severity: severity,
     code: "DATA_PROCESSING_ERROR",
   })
 }
@@ -94,8 +118,6 @@ export function withErrorHandling<T extends (...args: any[]) => any>(
     recoverable?: boolean
   } = {},
 ): (...args: Parameters<T>) => ReturnType<T> {
-  const { errorHandler } = require("./error-handler")
-
   return (...args: Parameters<T>): ReturnType<T> => {
     try {
       const result = fn(...args)

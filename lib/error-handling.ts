@@ -1,76 +1,137 @@
 /**
- * Comprehensive error handling module
- * This file re-exports all error handling functionality
+ * Central error handling module for the application
+ * Re-exports all error types and provides utility functions
  */
 
 // Re-export all error types
-export * from "./error-handling/error-types"
+export {
+  AppError,
+  ApiError,
+  NetworkError,
+  ValidationError,
+  WebSocketError,
+  AuthError,
+  ConfigError,
+  DataError,
+  StrategyError,
+  OrderExecutionError,
+  RateLimitError,
+  AuthenticationError,
+} from "./error-types"
 
-// Re-export error handler
-export * from "./error-handling/error-handler"
+// Export error handler
+export { errorHandler } from "./error-handler"
 
-// Re-export retry mechanism
-export * from "./error-handling/retry-mechanism"
+// Export retry mechanisms
+export {
+  retry,
+  retryFetch,
+  retryWithTimeout,
+  safeJsonParse,
+  makeSafe,
+  safeGet,
+} from "./retry-mechanism"
 
-// Export the errorHandler instance
-import { errorHandler } from "./error-handling/error-handler"
-export { errorHandler }
+// Utility function for handling API errors
+export function handleApiError(
+  error: unknown,
+  context = "API",
+  options: {
+    showToast?: boolean
+    severity?: "low" | "medium" | "high" | "critical"
+    retryAction?: () => Promise<void>
+  } = {},
+): void {
+  const { showToast = true, severity = "medium", retryAction } = options
+  const { errorHandler } = require("./error-handler")
 
-// Additional utility functions
+  const message = error instanceof Error ? error.message : String(error)
 
-/**
- * Safely parse JSON with error handling
- * @param json JSON string to parse
- * @param fallback Fallback value if parsing fails
- * @returns Parsed JSON or fallback value
- */
-export function safeJsonParse<T>(json: string, fallback: T): T {
-  try {
-    return JSON.parse(json) as T
-  } catch (error) {
-    console.warn("Failed to parse JSON:", error)
-    return fallback
-  }
+  errorHandler.handleError(message, {
+    context: { source: context },
+    showToast,
+    severity,
+    recoverable: !!retryAction,
+    retryAction,
+  })
 }
 
-/**
- * Create a safe version of a function that catches errors
- * @param fn Function to make safe
- * @param fallback Fallback value if function throws
- * @returns Safe function that never throws
- */
-export function makeSafe<T, Args extends any[]>(fn: (...args: Args) => T, fallback: T): (...args: Args) => T {
-  return (...args: Args): T => {
+// Utility function for handling WebSocket errors
+export function handleWebSocketError(
+  error: unknown,
+  context = "WebSocket",
+  options: {
+    showToast?: boolean
+    severity?: "low" | "medium" | "high" | "critical"
+    reconnectAction?: () => Promise<void>
+  } = {},
+): void {
+  const { showToast = true, severity = "high", reconnectAction } = options
+  const { errorHandler } = require("./error-handler")
+
+  const message = error instanceof Error ? error.message : String(error)
+
+  errorHandler.handleError(message, {
+    context: { source: context },
+    showToast,
+    severity,
+    recoverable: !!reconnectAction,
+    retryAction: reconnectAction,
+    code: "WEBSOCKET_ERROR",
+  })
+}
+
+// Utility function for handling data processing errors
+export function handleDataError(
+  error: unknown,
+  context = "Data Processing",
+  options: {
+    showToast?: boolean
+    severity?: "low" | "medium" | "high" | "critical"
+    data?: any
+  } = {},
+): void {
+  const { showToast = false, severity = "medium", data } = options
+  const { errorHandler } = require("./error-handler")
+
+  const message = error instanceof Error ? error.message : String(error)
+
+  errorHandler.handleError(message, {
+    context: { source: context, data },
+    showToast,
+    severity,
+    code: "DATA_PROCESSING_ERROR",
+  })
+}
+
+// Create a wrapped version of a function that handles errors
+export function withErrorHandling<T extends (...args: any[]) => any>(
+  fn: T,
+  options: {
+    context?: string
+    showToast?: boolean
+    severity?: "low" | "medium" | "high" | "critical"
+    recoverable?: boolean
+  } = {},
+): (...args: Parameters<T>) => ReturnType<T> {
+  const { errorHandler } = require("./error-handler")
+
+  return (...args: Parameters<T>): ReturnType<T> => {
     try {
-      return fn(...args)
-    } catch (error) {
-      console.error("Error in safe function:", error)
-      return fallback
-    }
-  }
-}
+      const result = fn(...args)
 
-/**
- * Safely access a property path in an object
- * @param obj Object to access
- * @param path Property path (e.g., 'user.profile.name')
- * @param fallback Fallback value if path doesn't exist
- * @returns Property value or fallback
- */
-export function safeGet<T>(obj: any, path: string, fallback: T): T {
-  try {
-    const parts = path.split(".")
-    let current = obj
-
-    for (const part of parts) {
-      if (current === null || current === undefined) {
-        return fallback
+      // Handle promises
+      if (result instanceof Promise) {
+        return result.catch((error) => {
+          errorHandler.handleError(error, options)
+          throw error
+        }) as ReturnType<T>
       }
-      current = current[part]
-    }
 
-    return current === undefined ? fallback : current
-  } catch (error) {
-    return fallback
+      return result
+    } catch (error) {
+      errorHandler.handleError(error, options)
+      throw error
+    }
   }
 }
