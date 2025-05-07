@@ -2,21 +2,13 @@
  * Binance WebSocket Client
  * Handles WebSocket connections to Binance API
  */
+import { errorHandler } from "@/lib/error-handling"
+import type { WebSocketClient } from "@/lib/types"
 
-interface WebSocketMessage {
-  stream: string
-  data: any
-}
-
-export interface WebSocketClient {
-  connect: () => void
-  disconnect: () => void
-  isConnected: () => boolean
-  subscribe: (stream: string, callback: (data: any) => void) => void
-  unsubscribe: (stream: string) => void
-  forceReconnect: () => void
-  connectToStream: (stream: string, callback: (data: any) => void) => () => void
-  connectToStreams: (streams: string[], callback: (data: any) => void) => () => void
+export interface WebSocketClientOptions {
+  reconnectAttempts?: number
+  reconnectDelay?: number
+  debug?: boolean
 }
 
 class BinanceWebSocketClient implements WebSocketClient {
@@ -30,10 +22,16 @@ class BinanceWebSocketClient implements WebSocketClient {
   private pingInterval: NodeJS.Timeout | null = null
   private lastPongTime = 0
   private connectionId = 0
+  private options: WebSocketClientOptions
 
-  constructor() {
+  constructor(options: WebSocketClientOptions = {}) {
     // Initialize with no connection
     this.ws = null
+    this.options = {
+      reconnectAttempts: options.reconnectAttempts || 10,
+      reconnectDelay: options.reconnectDelay || 1000,
+      debug: options.debug || false,
+    }
 
     // Add window beforeunload event to properly close connections
     if (typeof window !== "undefined") {
@@ -48,12 +46,12 @@ class BinanceWebSocketClient implements WebSocketClient {
    */
   public connect(): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      console.log("WebSocket already connected or connecting")
+      this.log("WebSocket already connected or connecting")
       return
     }
 
     try {
-      console.log("Connecting to Binance WebSocket...")
+      this.log("Connecting to Binance WebSocket...")
       this.connectionId++
       const currentConnectionId = this.connectionId
 
@@ -66,9 +64,9 @@ class BinanceWebSocketClient implements WebSocketClient {
       this.ws = new WebSocket(this.baseWsUrl)
 
       this.ws.onopen = () => {
-        console.log("WebSocket connection established")
+        this.log("WebSocket connection established")
         this.reconnectAttempts = 0
-        this.reconnectDelay = 1000
+        this.reconnectDelay = this.options.reconnectDelay || 1000
         this.isReconnecting = false
         this.lastPongTime = Date.now()
 
@@ -99,13 +97,20 @@ class BinanceWebSocketClient implements WebSocketClient {
             this.notifySubscribers(streamName, message)
           }
         } catch (error) {
-          console.error("Error processing WebSocket message:", error)
+          errorHandler.handleError(error as Error, "Error processing WebSocket message", {
+            service: "BinanceWebSocketClient",
+            method: "onmessage",
+          })
         }
       }
 
       this.ws.onerror = (event) => {
         // Log the error with more context but avoid logging the entire event object
-        console.error("WebSocket connection error occurred")
+        this.log("WebSocket connection error occurred")
+        errorHandler.handleError(new Error("WebSocket connection error"), {
+          service: "BinanceWebSocketClient",
+          method: "onerror",
+        })
 
         // Check if the connection is still valid
         const isConnectionValid =
@@ -118,7 +123,7 @@ class BinanceWebSocketClient implements WebSocketClient {
       }
 
       this.ws.onclose = (event) => {
-        console.log(`WebSocket connection closed: ${event.code} ${event.reason}`)
+        this.log(`WebSocket connection closed: ${event.code} ${event.reason}`)
         if (this.pingInterval) {
           clearInterval(this.pingInterval)
           this.pingInterval = null
@@ -129,7 +134,10 @@ class BinanceWebSocketClient implements WebSocketClient {
         }
       }
     } catch (error) {
-      console.error("Error connecting to WebSocket:", error)
+      errorHandler.handleError(error as Error, "Error connecting to WebSocket", {
+        service: "BinanceWebSocketClient",
+        method: "connect",
+      })
       this.attemptReconnect()
     }
   }
@@ -205,7 +213,7 @@ class BinanceWebSocketClient implements WebSocketClient {
    * Force reconnection to the WebSocket server
    */
   public forceReconnect(): void {
-    console.log("Forcing WebSocket reconnection...")
+    this.log("Forcing WebSocket reconnection...")
     if (this.ws) {
       this.ws.close()
       this.ws = null
@@ -218,7 +226,7 @@ class BinanceWebSocketClient implements WebSocketClient {
 
     // Reset reconnection parameters
     this.reconnectAttempts = 0
-    this.reconnectDelay = 1000
+    this.reconnectDelay = this.options.reconnectDelay || 1000
     this.isReconnecting = false
 
     // Connect again
@@ -277,13 +285,13 @@ class BinanceWebSocketClient implements WebSocketClient {
     this.isReconnecting = true
     this.reconnectAttempts++
 
-    if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+    if (this.reconnectAttempts <= this.options.reconnectAttempts!) {
       // Exponential backoff with jitter
       const jitter = Math.random() * 0.5 + 0.75 // Random value between 0.75 and 1.25
       const delay = Math.min(30000, this.reconnectDelay * jitter) // Cap at 30 seconds
 
-      console.log(
-        `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${Math.round(delay)}ms...`,
+      this.log(
+        `Attempting to reconnect (${this.reconnectAttempts}/${this.options.reconnectAttempts}) in ${Math.round(delay)}ms...`,
       )
 
       setTimeout(() => {
@@ -291,7 +299,7 @@ class BinanceWebSocketClient implements WebSocketClient {
 
         // Check if we're already connected before attempting to reconnect
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          console.log("Already reconnected, skipping reconnection attempt")
+          this.log("Already reconnected, skipping reconnection attempt")
           return
         }
 
@@ -300,7 +308,7 @@ class BinanceWebSocketClient implements WebSocketClient {
           try {
             this.ws.close()
           } catch (err) {
-            console.log("Error while closing existing connection:", err)
+            this.log("Error while closing existing connection:", err)
           }
           this.ws = null
         }
@@ -309,13 +317,13 @@ class BinanceWebSocketClient implements WebSocketClient {
         this.reconnectDelay *= 2 // Exponential backoff
       }, delay)
     } else {
-      console.error(`Failed to reconnect after ${this.maxReconnectAttempts} attempts`)
+      this.log(`Failed to reconnect after ${this.options.reconnectAttempts} attempts`)
       this.isReconnecting = false
 
       // Reset reconnection parameters for next manual reconnection attempt
       setTimeout(() => {
         this.reconnectAttempts = 0
-        this.reconnectDelay = 1000
+        this.reconnectDelay = this.options.reconnectDelay || 1000
       }, 60000) // Wait 1 minute before allowing reconnection attempts again
     }
   }
@@ -328,7 +336,7 @@ class BinanceWebSocketClient implements WebSocketClient {
 
     const streams = Array.from(this.subscriptions.keys())
     if (streams.length > 0) {
-      console.log(`Resubscribing to ${streams.length} streams...`)
+      this.log(`Resubscribing to ${streams.length} streams...`)
 
       const subscribeMsg = {
         method: "SUBSCRIBE",
@@ -345,7 +353,7 @@ class BinanceWebSocketClient implements WebSocketClient {
    */
   private checkConnectionHealth(): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log("WebSocket not connected, attempting to reconnect...")
+      this.log("WebSocket not connected, attempting to reconnect...")
       this.attemptReconnect()
       return
     }
@@ -354,7 +362,7 @@ class BinanceWebSocketClient implements WebSocketClient {
     const now = Date.now()
     if (now - this.lastPongTime > 30000) {
       // No pong for 30 seconds
-      console.warn("No pong received for 30 seconds, reconnecting...")
+      this.log("No pong received for 30 seconds, reconnecting...")
       this.forceReconnect()
     }
   }
@@ -373,7 +381,10 @@ class BinanceWebSocketClient implements WebSocketClient {
         try {
           this.ws?.send(JSON.stringify({ ping: Date.now() }))
         } catch (error) {
-          console.error("Error sending ping:", error)
+          errorHandler.handleError(error as Error, "Error sending ping", {
+            service: "BinanceWebSocketClient",
+            method: "setupPingInterval",
+          })
           this.forceReconnect()
           return
         }
@@ -397,7 +408,11 @@ class BinanceWebSocketClient implements WebSocketClient {
         try {
           callback(data)
         } catch (error) {
-          console.error(`Error in WebSocket callback for stream ${stream}:`, error)
+          errorHandler.handleError(error as Error, `Error in WebSocket callback for stream ${stream}`, {
+            service: "BinanceWebSocketClient",
+            method: "notifySubscribers",
+            stream,
+          })
         }
       })
     }
@@ -411,27 +426,14 @@ class BinanceWebSocketClient implements WebSocketClient {
   }
 
   /**
-   * Normalize stream name to ensure consistent format
-   * This handles both the symbol part and the stream type
+   * Log messages if debug is enabled
    */
-  private normalizeStreamName(streamName: string): string {
-    // Split by @ to separate symbol and stream type
-    const parts = streamName.split("@")
-
-    if (parts.length !== 2) {
-      // If not in the expected format, return as is
-      return streamName.toLowerCase()
+  private log(...args: any[]): void {
+    if (this.options.debug) {
+      console.log("[BinanceWebSocketClient]", ...args)
     }
-
-    // Normalize the symbol part (first part)
-    const symbol = parts[0].replace(/\s+/g, "").toLowerCase()
-    // Keep the stream type as is (second part)
-    const streamType = parts[1]
-
-    // Recombine with @
-    return `${symbol}@${streamType}`
   }
 }
 
 // Create singleton instance
-export const binanceWebSocketClient = new BinanceWebSocketClient()
+export const binanceWebSocketClient = new BinanceWebSocketClient({ debug: true })

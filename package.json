@@ -67,7 +67,8 @@
     "vitest": "latest",
     "uuid": "latest",
     "events": "latest",
-    "together-ai": "latest"
+    "together-ai": "latest",
+    "crypto": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

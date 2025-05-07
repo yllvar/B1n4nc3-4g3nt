@@ -142,3 +142,16 @@ export class StrategyError extends AppError {
     })
   }
 }
+
+/**
+ * Order execution error class for handling order-related errors
+ */
+export class OrderExecutionError extends AppError {
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, {
+      code: "ORDER_EXECUTION_ERROR",
+      severity: "high",
+      ...options,
+    })
+  }
+}

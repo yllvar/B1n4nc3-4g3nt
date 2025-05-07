@@ -1,10 +1,81 @@
 /**
  * Market Data Types
- * Defines standard types for market data across the application
+ * Types related to market data and trading instruments
  */
 
-// Base Kline (candlestick) data structure
+// Market data types
+export interface MarketTicker {
+  symbol: string
+  priceChange: number
+  priceChangePercent: number
+  weightedAvgPrice: number
+  lastPrice: number
+  lastQty: number
+  openPrice: number
+  highPrice: number
+  lowPrice: number
+  volume: number
+  quoteVolume: number
+  openTime: number
+  closeTime: number
+  firstId: number
+  lastId: number
+  count: number
+}
+
+/**
+ * Represents a single entry in the order book
+ * Contains price and quantity information
+ */
+export interface OrderBookEntry {
+  price: number
+  quantity: number
+}
+
+/**
+ * Represents the complete order book for a symbol
+ * Contains arrays of bids and asks, sorted by price
+ */
+export interface OrderBook {
+  lastUpdateId: number
+  bids: OrderBookEntry[]
+  asks: OrderBookEntry[]
+}
+
+/**
+ * Represents a single trade
+ */
+export interface Trade {
+  id: number
+  price: number
+  quantity: number
+  time: number
+  isBuyerMaker: boolean
+  isBestMatch?: boolean
+}
+
+/**
+ * Represents a candlestick/kline data point
+ */
 export interface Kline {
+  openTime: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  closeTime: number
+  quoteVolume: number
+  trades: number
+  takerBuyBaseAssetVolume: number
+  takerBuyQuoteAssetVolume: number
+}
+
+/**
+ * Raw kline data as returned from the API
+ * All numeric values are represented as strings
+ */
+export interface RawKline {
   openTime: number
   open: string
   high: string
@@ -19,72 +90,80 @@ export interface Kline {
   ignored?: string
 }
 
-// Parsed Kline with numeric values for calculations
-export interface ParsedKline {
-  openTime: number
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number
-  closeTime: number
-  quoteAssetVolume: number
-  trades: number
-  takerBuyBaseAssetVolume: number
-  takerBuyQuoteAssetVolume: number
-}
-
-// Trading signal type
-export interface TradingSignal {
+/**
+ * Wrapper for market data responses that includes error handling
+ */
+export interface MarketDataResult<T> {
+  data: T | null
+  error: Error | null
+  source: "websocket" | "rest" | "cache"
   timestamp: number
-  symbol: string
-  interval: string
-  type: SignalType
-  price: number
-  confidence: number
-  indicators: Record<string, any>
-  metadata: Record<string, any>
 }
 
-// Signal types
-export type SignalType = "BUY" | "SELL" | "STRONG_BUY" | "STRONG_SELL" | "NEUTRAL"
-
-// Strategy parameters
-export interface StrategyParameters {
-  shortEmaPeriod: number
-  longEmaPeriod: number
-  emaThreshold: number
-  vwapPeriod: number
-  vwapThreshold: number
-  takeProfitPercent: number
-  stopLossPercent: number
-  maxHoldingTimeMinutes: number
-  maxTradesPerHour: number
-  leverageMultiplier: number
-  [key: string]: any
+/**
+ * Options for market data subscriptions
+ */
+export interface SubscriptionOptions {
+  reconnect?: boolean
+  maxRetries?: number
+  retryInterval?: number
+  bufferSize?: number
+  throttleMs?: number
 }
 
-// Market data service interface
+/**
+ * Pagination parameters for API requests
+ */
+export interface PaginationParams {
+  limit?: number
+  offset?: number
+  fromId?: number
+  startTime?: number
+  endTime?: number
+}
+
+/**
+ * Market data service interface
+ * Defines methods for fetching and subscribing to market data
+ */
 export interface MarketDataService {
-  getKlines(symbol: string, interval: string, limit?: number): Promise<Kline[]>
-  getTicker(symbol: string): Promise<{ price: string }>
-  getOrderBook(symbol: string, limit?: number): Promise<OrderBook>
-  getTrades(symbol: string, limit?: number): Promise<Trade[]>
-}
+  // One-time data fetching methods
+  getCurrentPrice(symbol: string): Promise<MarketDataResult<number>>
+  getOrderBook(symbol: string, limit?: number): Promise<MarketDataResult<OrderBook>>
+  getRecentTrades(symbol: string, limit?: number): Promise<MarketDataResult<Trade[]>>
+  getKlines(symbol: string, interval: string, params?: PaginationParams): Promise<MarketDataResult<Kline[]>>
+  get24hrTicker(symbol: string): Promise<MarketDataResult<MarketTicker>>
 
-// Order book interface
-export interface OrderBook {
-  lastUpdateId: number
-  bids: [string, string][] // [price, quantity]
-  asks: [string, string][] // [price, quantity]
-}
+  // Subscription methods
+  subscribeToPrice(
+    symbol: string,
+    callback: (result: MarketDataResult<number>) => void,
+    options?: SubscriptionOptions,
+  ): () => void
+  subscribeToOrderBook(
+    symbol: string,
+    callback: (result: MarketDataResult<OrderBook>) => void,
+    options?: SubscriptionOptions,
+  ): () => void
+  subscribeToTrades(
+    symbol: string,
+    callback: (result: MarketDataResult<Trade[]>) => void,
+    options?: SubscriptionOptions,
+  ): () => void
+  subscribeToKlines(
+    symbol: string,
+    interval: string,
+    callback: (result: MarketDataResult<Kline[]>) => void,
+    options?: SubscriptionOptions,
+  ): () => void
+  subscribeTo24hrTicker(
+    symbol: string,
+    callback: (result: MarketDataResult<MarketTicker>) => void,
+    options?: SubscriptionOptions,
+  ): () => void
 
-// Trade interface
-export interface Trade {
-  id: number
-  price: string
-  qty: string
-  time: number
-  isBuyerMaker: boolean
-  isBestMatch: boolean
+  // Service status methods
+  getStatus(): "connected" | "connecting" | "disconnected" | "error" | "fallback"
+  getActiveSubscriptions(): string[]
+  unsubscribeAll(): void
 }

@@ -2,10 +2,12 @@
  * Enhanced Market Data Service
  * Provides a unified interface for market data with WebSocket and REST API fallback
  */
+import { Singleton } from "../utils/singleton"
 import { unifiedWebSocketClient } from "../websocket/unified-websocket-client"
 import { restApiService } from "./rest-api-service"
 import { errorHandler } from "../error-handling"
 import { DataValidator } from "./data-validation"
+import { CacheManager } from "./cache-manager"
 import type {
   MarketDataService,
   MarketDataResult,
@@ -14,43 +16,100 @@ import type {
   Kline,
   MarketTicker,
   SubscriptionOptions,
-} from "./interfaces"
+} from "../types"
 
-// Simple in-memory cache for data
-interface CacheEntry<T> {
-  data: T
-  timestamp: number
-  source: "websocket" | "rest"
-}
-
-export class EnhancedMarketDataService implements MarketDataService {
-  private static instance: EnhancedMarketDataService
+export class EnhancedMarketDataService extends Singleton<EnhancedMarketDataService> implements MarketDataService {
   private activeSubscriptions: Set<string> = new Set()
-  private cache: Map<string, CacheEntry<any>> = new Map()
-  private cacheTTL = 30000 // 30 seconds default TTL
+  private cache: CacheManager
   private defaultSubscriptionOptions: SubscriptionOptions = {
     reconnect: true,
     maxRetries: 5,
     retryInterval: 2000,
   }
+  private serviceStatus: "operational" | "degraded" | "down" = "operational"
+  private lastServiceCheck = 0
+  private serviceCheckInterval = 60000 // 1 minute
 
   private constructor() {
+    super()
+    // Initialize cache with appropriate settings
+    this.cache = new CacheManager({
+      maxSize: 1000,
+      ttl: 30000, // 30 seconds default TTL
+      evictionPolicy: "lru",
+      namespace: "market-data",
+      debug: false,
+    })
+
     // Initialize WebSocket connection monitoring
     this.monitorWebSocketConnection()
-  }
 
-  public static getInstance(): EnhancedMarketDataService {
-    if (!EnhancedMarketDataService.instance) {
-      EnhancedMarketDataService.instance = new EnhancedMarketDataService()
-    }
-    return EnhancedMarketDataService.instance
+    // Start periodic service status check
+    setInterval(() => this.checkServiceStatus(), this.serviceCheckInterval)
   }
 
   /**
    * Set cache TTL in milliseconds
    */
   public setCacheTTL(ttl: number): void {
-    this.cacheTTL = ttl
+    this.cache.setTTL(ttl)
+  }
+
+  /**
+   * Get cache statistics
+   */
+  public getCacheStats() {
+    return this.cache.getStats()
+  }
+
+  /**
+   * Check and update service status
+   */
+  private async checkServiceStatus(): Promise<void> {
+    try {
+      const now = Date.now()
+
+      // Don't check too frequently
+      if (now - this.lastServiceCheck < this.serviceCheckInterval / 2) {
+        return
+      }
+
+      this.lastServiceCheck = now
+
+      // Check WebSocket status
+      const wsStatus = unifiedWebSocketClient.getStatus()
+      const wsOperational = wsStatus === "connected"
+
+      // Check REST API status with a simple ping
+      let restOperational = false
+      try {
+        const pingResult = await restApiService.ping()
+        restOperational = pingResult.success === true
+      } catch (error) {
+        restOperational = false
+      }
+
+      // Update service status
+      if (wsOperational && restOperational) {
+        this.serviceStatus = "operational"
+      } else if (wsOperational || restOperational) {
+        this.serviceStatus = "degraded"
+      } else {
+        this.serviceStatus = "down"
+      }
+
+      // Log status changes
+      console.log(`Market data service status: ${this.serviceStatus}`)
+    } catch (error) {
+      console.error("Error checking service status:", error)
+    }
+  }
+
+  /**
+   * Get current service status
+   */
+  public getServiceStatus(): "operational" | "degraded" | "down" {
+    return this.serviceStatus
   }
 
   /**
@@ -96,34 +155,6 @@ export class EnhancedMarketDataService implements MarketDataService {
   }
 
   /**
-   * Get data from cache if valid
-   */
-  private getFromCache<T>(key: string): T | null {
-    const entry = this.cache.get(key)
-
-    if (!entry) return null
-
-    // Check if cache entry is still valid
-    if (Date.now() - entry.timestamp > this.cacheTTL) {
-      this.cache.delete(key)
-      return null
-    }
-
-    return entry.data as T
-  }
-
-  /**
-   * Store data in cache
-   */
-  private storeInCache<T>(key: string, data: T, source: "websocket" | "rest"): void {
-    this.cache.set(key, {
-      data,
-      timestamp: Date.now(),
-      source,
-    })
-  }
-
-  /**
    * Get current WebSocket connection status
    */
   public getStatus(): "connected" | "connecting" | "disconnected" | "error" {
@@ -153,7 +184,7 @@ export class EnhancedMarketDataService implements MarketDataService {
     const cacheKey = this.getCacheKey("price", formattedSymbol)
 
     // Try to get from cache first
-    const cachedData = this.getFromCache<number>(cacheKey)
+    const cachedData = this.cache.get<number>(cacheKey)
     if (cachedData !== null) {
       return {
         data: cachedData,
@@ -171,7 +202,7 @@ export class EnhancedMarketDataService implements MarketDataService {
         const result = await restApiService.getCurrentPrice(formattedSymbol)
 
         if (result.data !== null) {
-          this.storeInCache(cacheKey, result.data, "rest")
+          this.cache.set(cacheKey, result.data)
         }
 
         return result
@@ -179,7 +210,7 @@ export class EnhancedMarketDataService implements MarketDataService {
         const result = await restApiService.getCurrentPrice(formattedSymbol)
 
         if (result.data !== null) {
-          this.storeInCache(cacheKey, result.data, "rest")
+          this.cache.set(cacheKey, result.data)
         }
 
         return result
@@ -207,7 +238,7 @@ export class EnhancedMarketDataService implements MarketDataService {
     const cacheKey = this.getCacheKey("orderbook", formattedSymbol, { limit: limit.toString() })
 
     // Try to get from cache first
-    const cachedData = this.getFromCache<OrderBook>(cacheKey)
+    const cachedData = this.cache.get<OrderBook>(cacheKey)
     if (cachedData !== null) {
       return {
         data: cachedData,
@@ -224,7 +255,7 @@ export class EnhancedMarketDataService implements MarketDataService {
         const result = await restApiService.getOrderBook(formattedSymbol, limit)
 
         if (result.data !== null) {
-          this.storeInCache(cacheKey, result.data, "rest")
+          this.cache.set(cacheKey, result.data)
         }
 
         return result
@@ -232,7 +263,7 @@ export class EnhancedMarketDataService implements MarketDataService {
         const result = await restApiService.getOrderBook(formattedSymbol, limit)
 
         if (result.data !== null) {
-          this.storeInCache(cacheKey, result.data, "rest")
+          this.cache.set(cacheKey, result.data)
         }
 
         return result
@@ -260,7 +291,7 @@ export class EnhancedMarketDataService implements MarketDataService {
     const cacheKey = this.getCacheKey("trades", formattedSymbol, { limit: limit.toString() })
 
     // Try to get from cache first
-    const cachedData = this.getFromCache<Trade[]>(cacheKey)
+    const cachedData = this.cache.get<Trade[]>(cacheKey)
     if (cachedData !== null) {
       return {
         data: cachedData,
@@ -275,7 +306,7 @@ export class EnhancedMarketDataService implements MarketDataService {
       const result = await restApiService.getRecentTrades(formattedSymbol, limit)
 
       if (result.data && result.data.length > 0) {
-        this.storeInCache(cacheKey, result.data, "rest")
+        this.cache.set(cacheKey, result.data)
       }
 
       return result
@@ -302,7 +333,7 @@ export class EnhancedMarketDataService implements MarketDataService {
     const cacheKey = this.getCacheKey("klines", formattedSymbol, { interval, limit: limit.toString() })
 
     // Try to get from cache first
-    const cachedData = this.getFromCache<Kline[]>(cacheKey)
+    const cachedData = this.cache.get<Kline[]>(cacheKey)
     if (cachedData !== null) {
       return {
         data: cachedData,
@@ -317,7 +348,7 @@ export class EnhancedMarketDataService implements MarketDataService {
       const result = await restApiService.getKlines(formattedSymbol, interval, limit)
 
       if (result.data && result.data.length > 0) {
-        this.storeInCache(cacheKey, result.data, "rest")
+        this.cache.set(cacheKey, result.data)
       }
 
       return result
@@ -344,7 +375,7 @@ export class EnhancedMarketDataService implements MarketDataService {
     const cacheKey = this.getCacheKey("ticker", formattedSymbol)
 
     // Try to get from cache first
-    const cachedData = this.getFromCache<MarketTicker>(cacheKey)
+    const cachedData = this.cache.get<MarketTicker>(cacheKey)
     if (cachedData !== null) {
       return {
         data: cachedData,
@@ -359,7 +390,7 @@ export class EnhancedMarketDataService implements MarketDataService {
       const result = await restApiService.get24hrTicker(formattedSymbol)
 
       if (result.data !== null) {
-        this.storeInCache(cacheKey, result.data, "rest")
+        this.cache.set(cacheKey, result.data)
       }
 
       return result
@@ -402,7 +433,7 @@ export class EnhancedMarketDataService implements MarketDataService {
         if (price !== null) {
           // Store in cache
           const cacheKey = this.getCacheKey("price", formattedSymbol)
-          this.storeInCache(cacheKey, price, "websocket")
+          this.cache.set(cacheKey, price)
 
           // Notify callback
           callback({
@@ -467,7 +498,7 @@ export class EnhancedMarketDataService implements MarketDataService {
         if (orderBook) {
           // Store in cache
           const cacheKey = this.getCacheKey("orderbook", formattedSymbol)
-          this.storeInCache(cacheKey, orderBook, "websocket")
+          this.cache.set(cacheKey, orderBook)
 
           // Notify callback
           callback({
@@ -551,7 +582,7 @@ export class EnhancedMarketDataService implements MarketDataService {
 
           // Store in cache
           const cacheKey = this.getCacheKey("trades", formattedSymbol)
-          this.storeInCache(cacheKey, [...tradeBuffer], "websocket")
+          this.cache.set(cacheKey, [...tradeBuffer])
 
           // Notify callback
           callback({
@@ -650,7 +681,7 @@ export class EnhancedMarketDataService implements MarketDataService {
 
           // Store in cache
           const cacheKey = this.getCacheKey("klines", formattedSymbol, { interval })
-          this.storeInCache(cacheKey, [...klineBuffer], "websocket")
+          this.cache.set(cacheKey, [...klineBuffer])
 
           // Notify callback
           callback({
@@ -726,7 +757,7 @@ export class EnhancedMarketDataService implements MarketDataService {
         if (ticker) {
           // Store in cache
           const cacheKey = this.getCacheKey("ticker", formattedSymbol)
-          this.storeInCache(cacheKey, ticker, "websocket")
+          this.cache.set(cacheKey, ticker)
 
           // Notify callback
           callback({

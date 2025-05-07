@@ -4,73 +4,9 @@
  */
 import { unifiedWebSocketClient } from "@/lib/websocket/unified-websocket-client"
 import { errorHandler } from "@/lib/error-handling"
+import type { OrderBookEntry, Trade, KlineData, Ticker24hr, MarketDataServiceInterface } from "@/lib/types"
 
-export interface OrderBookEntry {
-  price: number
-  quantity: number
-}
-
-export interface Trade {
-  id: number
-  price: number
-  quantity: number
-  time: number
-  isBuyerMaker: boolean
-}
-
-export interface KlineData {
-  openTime: number
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number
-  closeTime: number
-  quoteVolume: number
-  trades: number
-  takerBuyBaseVolume: number
-  takerBuyQuoteVolume: number
-}
-
-export interface MarketTicker {
-  symbol: string
-  priceChange: number
-  priceChangePercent: number
-  weightedAvgPrice: number
-  lastPrice: number
-  lastQty: number
-  openPrice: number
-  highPrice: number
-  lowPrice: number
-  volume: number
-  quoteVolume: number
-  openTime: number
-  closeTime: number
-  firstId: number
-  lastId: number
-  count: number
-}
-
-export interface Ticker24hr {
-  symbol: string
-  priceChange: number
-  priceChangePercent: number
-  weightedAvgPrice: number
-  lastPrice: number
-  lastQty: number
-  openPrice: number
-  highPrice: number
-  lowPrice: number
-  volume: number
-  quoteVolume: number
-  openTime: number
-  closeTime: number
-  firstId: number
-  lastId: number
-  count: number
-}
-
-export class BinanceMarketDataService {
+export class BinanceMarketDataService implements MarketDataServiceInterface {
   private baseApiUrl: string
   private apiKey: string | undefined
   private apiSecret: string | undefined
@@ -152,7 +88,6 @@ export class BinanceMarketDataService {
         count: data.count,
       }
     } catch (error) {
-      console.error("Error fetching 24hr ticker:", error)
       errorHandler.handleError(error as Error, {
         context: { action: "get24hrTicker", symbol },
         severity: "medium",
@@ -220,7 +155,6 @@ export class BinanceMarketDataService {
         takerBuyQuoteVolume: Number.parseFloat(kline[10]),
       }))
     } catch (error) {
-      console.error(`Error fetching klines for ${symbol}:`, error)
       errorHandler.handleError(error as Error, {
         context: { action: "getKlines", symbol, interval, limit },
         severity: "medium",
@@ -278,7 +212,6 @@ export class BinanceMarketDataService {
         })),
       }
     } catch (error) {
-      console.error(`Error fetching order book for ${symbol}:`, error)
       errorHandler.handleError(error as Error, {
         context: { action: "getOrderBook", symbol, limit },
         severity: "medium",
@@ -330,7 +263,6 @@ export class BinanceMarketDataService {
         isBuyerMaker: trade.isBuyerMaker,
       }))
     } catch (error) {
-      console.error(`Error fetching recent trades for ${symbol}:`, error)
       errorHandler.handleError(error as Error, {
         context: { action: "getRecentTrades", symbol, limit },
         severity: "medium",

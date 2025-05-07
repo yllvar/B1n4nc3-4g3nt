@@ -4,13 +4,17 @@
  */
 
 // Re-export all error types
-export * from "./error-types"
+export * from "./error-handling/error-types"
 
 // Re-export error handler
-export * from "./error-handler"
+export * from "./error-handling/error-handler"
 
 // Re-export retry mechanism
-export * from "./retry-mechanism"
+export * from "./error-handling/retry-mechanism"
+
+// Export the errorHandler instance
+import { errorHandler } from "./error-handling/error-handler"
+export { errorHandler }
 
 // Additional utility functions
 
