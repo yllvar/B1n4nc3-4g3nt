@@ -2,6 +2,7 @@
  * Error handler for centralized error management
  */
 import { AppError, type ErrorOptions } from "./error-types"
+import { isNetworkOnline } from "./utils/network"
 
 export interface ErrorHandlerOptions {
   logToConsole?: boolean
@@ -39,8 +40,8 @@ class ErrorHandler {
     // Log the error
     this.logError(appError)
 
-    // Report to server if enabled
-    if (this.options.logToServer) {
+    // Report to server if enabled and network is available
+    if (this.options.logToServer && isNetworkOnline()) {
       this.reportToServer(appError)
     }
 
@@ -85,6 +86,13 @@ class ErrorHandler {
    */
   public setOptions(options: Partial<ErrorHandlerOptions>): void {
     this.options = { ...this.options, ...options }
+  }
+
+  /**
+   * Clean up any resources used by the error handler
+   */
+  public cleanup(): void {
+    // Nothing to clean up for now
   }
 
   /**

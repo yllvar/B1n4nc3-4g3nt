@@ -37,15 +37,33 @@ export function ErrorLoggerInit() {
       event.preventDefault()
     }
 
+    // Handle network status changes
+    const handleOnline = () => {
+      console.log("Network connection restored")
+    }
+
+    const handleOffline = () => {
+      console.log("Network connection lost")
+      errorHandler.handleError("Network connection lost", {
+        code: "NETWORK_OFFLINE",
+        severity: "medium",
+        recoverable: true,
+      })
+    }
+
     // Register global handlers
     window.addEventListener("unhandledrejection", handleUnhandledRejection)
     window.addEventListener("error", handleError)
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
 
     // Clean up
     return () => {
       window.removeEventListener("unhandledrejection", handleUnhandledRejection)
       window.removeEventListener("error", handleError)
-      errorHandler.cleanup()
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+      errorHandler.cleanup?.()
     }
   }, [])
 

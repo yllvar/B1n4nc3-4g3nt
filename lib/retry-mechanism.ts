@@ -3,6 +3,7 @@
  */
 import { NetworkError } from "./error-types"
 import { errorHandler } from "./error-handler"
+import { isNetworkOnline } from "./utils/network"
 
 export interface RetryOptions {
   maxRetries?: number
@@ -12,6 +13,7 @@ export interface RetryOptions {
   retryableStatusCodes?: number[]
   retryableErrors?: string[]
   onRetry?: (error: Error, attempt: number) => void
+  requireNetwork?: boolean
 }
 
 const defaultRetryOptions: RetryOptions = {
@@ -22,6 +24,7 @@ const defaultRetryOptions: RetryOptions = {
   retryableStatusCodes: [408, 429, 500, 502, 503, 504],
   retryableErrors: ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"],
   onRetry: undefined,
+  requireNetwork: true,
 }
 
 /**
@@ -37,6 +40,14 @@ export async function retry<T>(operation: () => Promise<T>, options: RetryOption
 
   while (attempt <= opts.maxRetries!) {
     try {
+      // Check network status if required
+      if (opts.requireNetwork && !isNetworkOnline()) {
+        throw new NetworkError("Network is offline", {
+          code: "NETWORK_OFFLINE",
+          recoverable: true,
+        })
+      }
+
       return await operation()
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))
@@ -153,4 +164,61 @@ export async function retryWithTimeout<T>(
       }),
     ])
   }, retryOptions)
+}
+
+/**
+ * Safely parse JSON with error handling
+ * @param json JSON string to parse
+ * @param fallback Fallback value if parsing fails
+ * @returns Parsed JSON or fallback value
+ */
+export function safeJsonParse<T>(json: string, fallback: T): T {
+  try {
+    return JSON.parse(json) as T
+  } catch (error) {
+    console.warn("Failed to parse JSON:", error)
+    return fallback
+  }
+}
+
+/**
+ * Create a safe version of a function that catches errors
+ * @param fn Function to make safe
+ * @param fallback Fallback value if function throws
+ * @returns Safe function that never throws
+ */
+export function makeSafe<T, Args extends any[]>(fn: (...args: Args) => T, fallback: T): (...args: Args) => T {
+  return (...args: Args): T => {
+    try {
+      return fn(...args)
+    } catch (error) {
+      console.error("Error in safe function:", error)
+      return fallback
+    }
+  }
+}
+
+/**
+ * Safely access a property path in an object
+ * @param obj Object to access
+ * @param path Property path (e.g., 'user.profile.name')
+ * @param fallback Fallback value if path doesn't exist
+ * @returns Property value or fallback
+ */
+export function safeGet<T>(obj: any, path: string, fallback: T): T {
+  try {
+    const parts = path.split(".")
+    let current = obj
+
+    for (const part of parts) {
+      if (current === null || current === undefined) {
+        return fallback
+      }
+      current = current[part]
+    }
+
+    return current === undefined ? fallback : current
+  } catch (error) {
+    return fallback
+  }
 }
