@@ -1458,8 +1458,8 @@ packages:
   '@types/node-int64@0.4.32':
     resolution: {integrity: sha512-xf/JsSlnXQ+mzvc0IpXemcrO4BrCfpgNpMco+GLcXkFk01k/gW9lGJu+Vof0ZSvHK6DsHJDPSbjFPs36QkWXqw==}
 
-  '@types/node@18.19.96':
-    resolution: {integrity: sha512-PzBvgsZ7YdFs/Kng1BSW8IGv68/SPcOxYYhT7luxD7QyzIhFS1xPTpfK3K9eHBa7hVwlW+z8nN0mOd515yaduQ==}
+  '@types/node@18.19.97':
+    resolution: {integrity: sha512-4r3Y9EuCJjWduiam85Fo4GBQtneaEuoaBSdiKo+o6qwQUh0JFVBe7cRUK6I6yVzA0S1gBJJfoQx4VtBH4e5ikg==}
 
   '@types/node@22.0.0':
     resolution: {integrity: sha512-VT7KSYudcPOzP5Q0wfbowyNLaVR8QWUdw+088uFWwfvpY6uCWaXpqV6ieLAu9WBcnTa7H4Z5RLK8I5t2FuOcqw==}
@@ -4037,7 +4037,7 @@ snapshots:
     dependencies:
       '@types/node': 22.0.0
 
-  '@types/node@18.19.96':
+  '@types/node@18.19.97':
     dependencies:
       undici-types: 5.26.5
 
@@ -5299,7 +5299,7 @@ snapshots:
 
   together-ai@0.16.0:
     dependencies:
-      '@types/node': 18.19.96
+      '@types/node': 18.19.97
       '@types/node-fetch': 2.6.12
       '@types/parquetjs': 0.10.6
       '@types/progress-stream': 2.0.5
